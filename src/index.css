@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+/*
+ * Mencegah Layout Shift (Pergeseran Layout):
+ * Memastikan area scrollbar (gutter) selalu stabil di browser
+ * sehingga layout kalender tidak bergeser saat modal dialog dibuka/ditutup.
+ */
+html {
+  scrollbar-gutter: stable;
+}
