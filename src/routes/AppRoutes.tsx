@@ -29,14 +29,14 @@ export default function AppRoutes() {
           <Route path="kalender" element={<CalendarPage />} />
 
           {/* Halaman Ensiklopedia / Keterangan Wariga (Katalog Utama - Page 1) */}
-          <Route path="layanan/keterangan" element={<KeteranganPage />} />
+          <Route path="keterangan" element={<KeteranganPage />} />
 
-          {/* Halaman Penuh Rincian Kategori Keterangan (Page 2: contoh /layanan/keterangan/hari_raya) */}
-          <Route path="layanan/keterangan/:typeCode" element={<KeteranganDetailPage />} />
-
-          {/* Kompatibilitas rute lama tanpa prefix layanan */}
-          <Route path="keterangan" element={<Navigate to="/layanan/keterangan" replace />} />
+          {/* Halaman Penuh Rincian Kategori Keterangan (Page 2: contoh /keterangan/hari_raya) */}
           <Route path="keterangan/:typeCode" element={<KeteranganDetailPage />} />
+
+          {/* Fallback jika ada yang mengakses rute dengan prefix layanan */}
+          <Route path="layanan/keterangan" element={<Navigate to="/keterangan" replace />} />
+          <Route path="layanan/keterangan/:typeCode" element={<Navigate to="/keterangan" replace />} />
 
           {/* Halaman Pencarian & Perhitungan Otonan */}
           <Route path="otonan" element={<OtonanPage />} />

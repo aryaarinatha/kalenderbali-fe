@@ -21,19 +21,32 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
   isLoading = false,
 }) => {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
-      {/* 1. Judul & Subtitle Halaman */}
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0f172a] tracking-tight">
+    <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      {/* 1. Breadcrumb Navigasi & Judul H1 Halaman */}
+      <div className="space-y-1.5">
+        {/* Breadcrumb navigasi hierarkis (Menu Utama Wargabali) */}
+        <nav
+          aria-label="Breadcrumb"
+          className="text-xs font-semibold text-slate-400 flex items-center gap-2 select-none"
+        >
+          <span>Wargabali</span>
+          <span className="text-slate-300">/</span>
+          <span className="text-teal-700 font-bold">Kalender Bali</span>
+        </nav>
+
+        {/* Judul H1 Halaman */}
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#0f172a] tracking-tight">
           Kalender Bali
         </h1>
-        <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+
+        {/* Deskripsi ringkas fungsi halaman */}
+        <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed max-w-2xl">
           Pawukon, rahina, piodalan, dan hari suci dalam satu tampilan.
         </p>
       </div>
 
       {/* 2. Tombol Aksi di Sudut Kanan */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 shrink-0">
         {/* Tombol Unduh Berkas .ics Kalender (Standar Primary Button AGENTS.md Bab 4.4) */}
         <button
           type="button"

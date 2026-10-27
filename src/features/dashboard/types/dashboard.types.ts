@@ -56,6 +56,8 @@ export interface DashboardHeroData {
   quoteHariIni: string;
 }
 
+import type { HariRayaItem } from '@/features/kalender/types/kalender.types';
+
 // ---------------------------------------------------------------------------
 // 2. Kontrak Mini Kalender Bulanan
 // ---------------------------------------------------------------------------
@@ -79,11 +81,8 @@ export interface DashboardMiniCalendarDay {
   /** Menandakan apakah tanggal ini sedang diklik/dipilih oleh pengguna */
   isSelected: boolean;
 
-  /** Label teks singkat hari raya jika ada (contoh: "Kajeng", "Purnama", "Sugihan") */
-  holidayLabel?: string;
-
-  /** Varian warna dot penanda hari raya */
-  holidayDotColor?: 'gold' | 'rose' | 'emerald' | 'teal';
+  /** Daftar hari raya pada tanggal ini dari backend Go (untuk pill bertumpuk) */
+  holidays: HariRayaItem[];
 }
 
 // ---------------------------------------------------------------------------
@@ -94,8 +93,11 @@ export interface DashboardMiniCalendarDay {
  * Model satu item hari raya terdekat yang ditampilkan pada daftar vertikal.
  */
 export interface UpcomingHariRayaItem {
-  /** Identifier unik hari raya */
+  /** Identifier unik item untuk key react */
   id: string;
+
+  /** ID master hari raya jika tersedia */
+  holidayId?: string;
 
   /** Nama hari raya (contoh: "Tilem Sasih Katiga", "Sugihan Jawa", "Galungan") */
   nama: string;
@@ -126,6 +128,17 @@ export interface UpcomingHariRayaItem {
 // 4. Kontrak Dewasa Ayu Hari Ini (Card Hijau Teal Kiri Bawah)
 // ---------------------------------------------------------------------------
 
+export interface DewasaAyuItem {
+  /** Identifier unik */
+  id: string;
+  /** Nama padewasan / hari baik (contoh: "Dewa Ngelayang", "Subacara", "Amerta Dadi") */
+  nama: string;
+  /** Keterangan ringkas petunjuk / fungsi hari baik */
+  keterangan: string;
+  /** Label kategori tag aktivitas (contoh: "SEMBAHYANG", "BELAJAR", "MELUKAT") */
+  tag: string;
+}
+
 /**
  * Model ringkasan Ala Ayuning Dewasa harian.
  * Didesain modular agar dapat langsung dihubungkan ke endpoint Backend Go saat siap.
@@ -141,10 +154,12 @@ export interface DewasaAyuDashboard {
   headline: string;
 
   /**
-   * Menampilkan maksimal 3 rekomendasi aktivitas teratas (aturan pembatasan 3 teratas).
-   * Contoh: ["BELAJAR", "MELUKAT", "SEMBAHYANG"]
+   * Menampilkan 3 rekomendasi padewasan / hari baik teratas hari ini.
    */
-  topActivities: string[];
+  items: DewasaAyuItem[];
+
+  /** Menampilkan maksimal 3 rekomendasi aktivitas teratas (opsional untuk backward compatibility) */
+  topActivities?: string[];
 
   /** Tautan tujuan tombol "Lihat selengkapnya →" (/ala-ayuning-dewasa) */
   actionUrl: string;
@@ -155,10 +170,13 @@ export interface DewasaAyuDashboard {
 // ---------------------------------------------------------------------------
 
 /**
- * Model ringkasan jadwal Piodalan terdekat.
+ * Model ringkasan satu jadwal Piodalan terdekat.
  * Didesain modular agar dapat langsung dihubungkan ke endpoint Backend Go saat siap.
  */
 export interface PiodalanDashboardItem {
+  /** Identifier unik */
+  id: string;
+
   /** Nama hari suci jatuhnya piodalan (contoh: "Buda Kliwon Ugu") */
   rahina: string;
 

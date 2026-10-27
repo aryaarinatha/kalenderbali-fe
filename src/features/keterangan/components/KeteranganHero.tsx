@@ -39,8 +39,6 @@ export const KeteranganHero: React.FC<KeteranganHeroProps> = () => {
         >
           <span>Wargabali</span>
           <span className="text-slate-300">/</span>
-          <span>Layanan</span>
-          <span className="text-slate-300">/</span>
           <span className="text-teal-700 font-bold">Keterangan</span>
         </nav>
 

@@ -174,14 +174,7 @@ export default function KeteranganDetailPage() {
           </span>
           <span className="text-slate-300">/</span>
           <span
-            onClick={() => navigate('/layanan/keterangan')}
-            className="hover:text-slate-600 cursor-pointer"
-          >
-            Layanan
-          </span>
-          <span className="text-slate-300">/</span>
-          <span
-            onClick={() => navigate('/layanan/keterangan')}
+            onClick={() => navigate('/keterangan')}
             className="hover:text-slate-600 cursor-pointer"
           >
             Keterangan
@@ -409,7 +402,7 @@ export default function KeteranganDetailPage() {
       <div className="pt-6 flex justify-start">
         <button
           type="button"
-          onClick={() => navigate('/layanan/keterangan')}
+          onClick={() => navigate('/keterangan')}
           className="h-11 px-6 rounded-xl bg-[#0e9f90] hover:bg-[#0c8a7d] active:bg-[#0a756a] text-white font-bold text-sm shadow-xs transition-all active:scale-98 cursor-pointer inline-flex items-center gap-2 [touch-action:manipulation]"
         >
           <ArrowLeft size={16} />

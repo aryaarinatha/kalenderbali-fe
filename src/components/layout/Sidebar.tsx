@@ -66,7 +66,7 @@ export default function Sidebar() {
    * Definisi menu informasi & fitur tambahan
    */
   const secondaryNavItems: NavItem[] = [
-    { to: '/layanan/keterangan', label: 'Keterangan', icon: FileText },
+    { to: '/keterangan', label: 'Keterangan', icon: FileText },
     { to: '/kelola-pura', label: 'Kelola Pura', icon: Landmark },
     { to: '/info-kita', label: 'Info Kita', icon: Newspaper },
   ];
@@ -258,9 +258,8 @@ export default function Sidebar() {
                   onClick={closeMobile}
                   className={({ isActive }) => {
                     const isKeteranganActive =
-                      item.to === '/layanan/keterangan' &&
-                      (location.pathname.startsWith('/layanan/keterangan') ||
-                        location.pathname.startsWith('/keterangan'));
+                      item.to === '/keterangan' &&
+                      location.pathname.startsWith('/keterangan');
                     const isItemActive = isActive || isKeteranganActive;
                     return `group relative flex items-center gap-3 px-3.5 min-h-11 rounded-xl text-sm font-medium border transition-colors duration-150 outline-none focus:outline-none [touch-action:manipulation] ${
                       isItemActive

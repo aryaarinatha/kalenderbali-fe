@@ -100,7 +100,7 @@ export default function KeteranganPage() {
    * Menggantikan pembukaan modal pop-up mengambang lama
    */
   const handleNavigateToDetail = (cat: KeteranganType) => {
-    navigate(`/layanan/keterangan/${cat.code}`);
+    navigate(`/keterangan/${cat.code}`);
   };
 
   // ---------------------------------------------------------------------------

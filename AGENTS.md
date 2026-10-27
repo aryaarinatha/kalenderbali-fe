@@ -77,24 +77,35 @@ Pewarnaan elemen kalender di Kalender, Otonan, dan modul mendatang **WAJIB KONSI
 
 ## 4. ELEMEN UI YANG WAJIB SERAGAM DI SETIAP HALAMAN
 
-### 1. Banner Hero Halaman (Page Header)
-Setiap halaman wajib diawali amplop card header standar:
+### 1. Header Halaman Standar (Page Header & Breadcrumb)
+Setiap halaman fitur layanan utama diawali header borderless standar dengan breadcrumb hierarkis:
 ```tsx
-<div className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-7 shadow-xs mb-6">
-  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-    <div className="space-y-1">
-      <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#0d9488] flex items-center gap-1.5">
-        <Icon size={14} /> NAMA MODUL
-      </span>
-      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#0f172a] tracking-tight">
-        Judul Halaman
-      </h1>
-      <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
-        Deskripsi 1-2 kalimat fungsi halaman ini.
-      </p>
-    </div>
-    {/* Optional: Widget Stat Counter Box atau Aksi Cepat */}
+<div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+  <div className="space-y-1.5">
+    {/* Breadcrumb navigasi hierarkis */}
+    <nav
+      aria-label="Breadcrumb"
+      className="text-xs font-semibold text-slate-400 flex items-center gap-2 select-none"
+    >
+      <span>Wargabali</span>
+      <span className="text-slate-300">/</span>
+      <span>Layanan</span>
+      <span className="text-slate-300">/</span>
+      <span className="text-teal-700 font-bold">Nama Layanan</span>
+    </nav>
+
+    {/* Judul H1 Halaman */}
+    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#0f172a] tracking-tight">
+      Judul Halaman
+    </h1>
+
+    {/* Deskripsi ringkas fungsi halaman */}
+    <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed max-w-2xl">
+      Deskripsi 1-2 kalimat fungsi halaman ini.
+    </p>
   </div>
+
+  {/* Aksi Cepat / Tombol Sudut Kanan (Opsional) */}
 </div>
 ```
 
