@@ -4,6 +4,7 @@ import { AlertCircle, RefreshCw } from 'lucide-react';
 import type { OtonanSearchParams, OtonanSearchType } from '../types/otonan.types';
 import { useOtonanSearch } from '../hooks/useOtonan';
 import { formatIndoDate, getTodayWITA } from '../utils/otonanUtils';
+import { OtonanHero } from '../components/OtonanHero';
 import { OtonanFormSection } from '../components/OtonanFormSection';
 import { OtonanResultSection } from '../components/OtonanResultSection';
 import { OtonanDetailModal } from '../components/OtonanDetailModal';
@@ -140,18 +141,9 @@ export default function OtonanPage() {
   return (
     <div className="space-y-6 pb-12">
       {/* =================================================================== */}
-      {/* 1. TOP HEADER (SESUAI STYLE KALENDER BALI - GAMBAR 2)               */}
+      {/* 1. TOP HEADER & BREADCRUMB (SESUAI DESAIN WARGABALI)                */}
       {/* =================================================================== */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0f172a] tracking-tight">
-            Otonan
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-            Hitung jadwal perayaan otonan berikutnya dan telusuri rincian wariga hari kelahiran Anda.
-          </p>
-        </div>
-      </div>
+      <OtonanHero />
 
       {/* =================================================================== */}
       {/* 2. FORM SECTION (HERO BANNER & FORM HITUNG OTONAN)                  */}

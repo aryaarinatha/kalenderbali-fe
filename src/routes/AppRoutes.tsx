@@ -5,6 +5,8 @@ import AppLayout from '@/components/layout/AppLayout';
 import DashboardPage from '@/features/dashboard/pages/DashboardPage';
 import CalendarPage from '@/features/kalender/pages/CalendarPage';
 import KeteranganPage from '@/features/keterangan/pages/KeteranganPage';
+// Import Halaman Rincian Kategori Keterangan Penuh (Page 2)
+import KeteranganDetailPage from '@/features/keterangan/pages/KeteranganDetailPage';
 import OtonanPage from '@/features/otonan/pages/OtonanPage';
 import HariRayaPage from '@/features/hari-raya/pages/HariRayaPage';
 
@@ -26,8 +28,15 @@ export default function AppRoutes() {
           {/* Halaman Kalender Bali Lengkap */}
           <Route path="kalender" element={<CalendarPage />} />
 
-          {/* Halaman Ensiklopedia / Keterangan Wariga */}
-          <Route path="keterangan" element={<KeteranganPage />} />
+          {/* Halaman Ensiklopedia / Keterangan Wariga (Katalog Utama - Page 1) */}
+          <Route path="layanan/keterangan" element={<KeteranganPage />} />
+
+          {/* Halaman Penuh Rincian Kategori Keterangan (Page 2: contoh /layanan/keterangan/hari_raya) */}
+          <Route path="layanan/keterangan/:typeCode" element={<KeteranganDetailPage />} />
+
+          {/* Kompatibilitas rute lama tanpa prefix layanan */}
+          <Route path="keterangan" element={<Navigate to="/layanan/keterangan" replace />} />
+          <Route path="keterangan/:typeCode" element={<KeteranganDetailPage />} />
 
           {/* Halaman Pencarian & Perhitungan Otonan */}
           <Route path="otonan" element={<OtonanPage />} />

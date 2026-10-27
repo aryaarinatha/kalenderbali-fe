@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   Calendar,
@@ -36,6 +36,7 @@ export default function Sidebar() {
   // Mengambil state, status menu persisten, dan fungsi navigasi dari Zustand store
   const { isCollapsed, isMobileOpen, closeMobile, openMenus, toggleSubmenu } =
     useSidebarStore();
+  const location = useLocation();
 
   /**
    * Definisi daftar menu navigasi utama sesuai dengan desain mockup
@@ -65,7 +66,7 @@ export default function Sidebar() {
    * Definisi menu informasi & fitur tambahan
    */
   const secondaryNavItems: NavItem[] = [
-    { to: '/keterangan', label: 'Keterangan', icon: FileText },
+    { to: '/layanan/keterangan', label: 'Keterangan', icon: FileText },
     { to: '/kelola-pura', label: 'Kelola Pura', icon: Landmark },
     { to: '/info-kita', label: 'Info Kita', icon: Newspaper },
   ];
@@ -255,13 +256,18 @@ export default function Sidebar() {
                   key={item.to}
                   to={item.to}
                   onClick={closeMobile}
-                  className={({ isActive }) =>
-                    `group relative flex items-center gap-3 px-3.5 min-h-11 rounded-xl text-sm font-medium border transition-colors duration-150 outline-none focus:outline-none [touch-action:manipulation] ${
-                      isActive
+                  className={({ isActive }) => {
+                    const isKeteranganActive =
+                      item.to === '/layanan/keterangan' &&
+                      (location.pathname.startsWith('/layanan/keterangan') ||
+                        location.pathname.startsWith('/keterangan'));
+                    const isItemActive = isActive || isKeteranganActive;
+                    return `group relative flex items-center gap-3 px-3.5 min-h-11 rounded-xl text-sm font-medium border transition-colors duration-150 outline-none focus:outline-none [touch-action:manipulation] ${
+                      isItemActive
                         ? 'bg-teal-50 text-teal-800 font-semibold border-teal-200/60 shadow-2xs'
                         : 'border-transparent text-slate-600 hover:text-[#0f172a] hover:bg-slate-100/70'
-                    } ${isCollapsed ? 'justify-center px-0' : ''}`
-                  }
+                    } ${isCollapsed ? 'justify-center px-0' : ''}`;
+                  }}
                 >
                   <Icon size={20} className="shrink-0" />
                   {!isCollapsed && <span className="truncate">{item.label}</span>}
