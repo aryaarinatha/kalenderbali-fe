@@ -344,7 +344,12 @@ export function getHariRayaBadgeStyle(nama: string): BadgeColorStyle {
     };
   }
 
-  if (lower.includes('buda cemeng') || lower.includes('rambut sadhana') || lower.includes('bhatari sri')) {
+  if (
+    lower.includes('buda cemeng') ||
+    lower.includes('rambut sadhana') ||
+    lower.includes('rambut sedana') ||
+    lower.includes('bhatari sri')
+  ) {
     return {
       bg: 'bg-[#e0f2fe]',
       text: 'text-[#0369a1]',
