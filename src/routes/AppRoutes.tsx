@@ -1,8 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import AppLayout from '@/components/layout/AppLayout';
 
-// Import komponen proteksi rute khusus Admin
+// Import komponen proteksi rute khusus Admin & Pengguna Terautentikasi
 import AdminRoute from '@/components/auth/AdminRoute';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
 // Import komponen-komponen halaman autentikasi mandiri
 import LoginPage from '@/features/auth/pages/LoginPage';
@@ -19,6 +20,7 @@ import KeteranganDetailPage from '@/features/keterangan/pages/KeteranganDetailPa
 import OtonanPage from '@/features/otonan/pages/OtonanPage';
 import PiodalanPage from '@/features/piodalan/pages/PiodalanPage';
 import HariRayaPage from '@/features/hari-raya/pages/HariRayaPage';
+import KelolaPuraPage from '@/features/kelola-pura/pages/KelolaPuraPage';
 
 // Import komponen-komponen halaman Manajemen Admin
 import AdminUserPage from '@/features/admin/pages/AdminUserPage';
@@ -91,15 +93,15 @@ export default function AppRoutes() {
             }
           />
 
-          <Route
-            path="kelola-pura"
-            element={
-              <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-2">
-                <h2 className="text-xl font-bold text-slate-800">Kelola Pura</h2>
-                <p className="text-sm text-slate-500">Modul pengelolaan data pura dan piodalan.</p>
-              </div>
-            }
-          />
+          {/* ==================================================================== */}
+          {/* RUTE TERLINDUNGI LOGIN (MEMBER, GUEST TERDAFTAR, & ADMIN)            */}
+          {/* Mengalihkan pengguna non-login ke /login dengan state { from: loc }  */}
+          {/* ==================================================================== */}
+          <Route element={<ProtectedRoute />}>
+            {/* Halaman Utama Katalog & Kelola Pura Bali */}
+            <Route path="kelola-pura" element={<KelolaPuraPage />} />
+            <Route path="layanan/kelola-pura" element={<Navigate to="/kelola-pura" replace />} />
+          </Route>
 
           <Route
             path="info-kita"
