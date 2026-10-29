@@ -18,6 +18,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useKalenderTahun } from '@/features/kalender/hooks/useKalender';
+import { useAllPuras } from '@/features/piodalan/hooks/usePiodalan';
 import {
   formatFullIndoDate,
   getIndoDayName,
@@ -35,11 +36,11 @@ import type {
 } from '../types/dashboard.types';
 import {
   DEFAULT_DEWASA_AYU,
-  DEFAULT_PIODALAN,
   DEFAULT_PIODALAN_LIST,
 } from '../data/dashboardMockData';
 import {
   extractTopUpcomingHariRaya,
+  extractTopUpcomingPiodalan,
   generateMiniCalendarGrid,
 } from '../utils/dashboardUtils';
 
@@ -50,14 +51,17 @@ export function useDashboardData() {
   const todayWITA = useMemo(() => getTodayWITA(), []);
   const todayParsed = useMemo(() => parseISODate(todayWITA), [todayWITA]);
 
-  // State bulan dan tahun aktif untuk Mini Kalender (default: bulan & tahun hari ini)
-  const [calendarYear, setCalendarYear] = useState<number>(todayParsed.year);
-  const [calendarMonth, setCalendarMonth] = useState<number>(todayParsed.month);
+  // State bulan dan tahun aktif untuk Mini Kalender (disatukan dalam satu state atomik
+  // agar transisi tahun murni/pure tanpa efek ganda pada React StrictMode)
+  const [calendarDate, setCalendarDate] = useState<{ year: number; month: number }>({
+    year: todayParsed.year,
+    month: todayParsed.month,
+  });
+  const { year: calendarYear, month: calendarMonth } = calendarDate;
 
   // State tanggal terpilih pada Mini Kalender (default: hari ini)
   const [selectedDate, setSelectedDate] = useState<string>(todayWITA);
 
-  // ---------------------------------------------------------------------------
   // ---------------------------------------------------------------------------
   // 2. Konsumsi Data Kalender 1 Tahun dari Backend Go via TanStack Query
   // ---------------------------------------------------------------------------
@@ -71,6 +75,14 @@ export function useDashboardData() {
     error,
     refetch,
   } = useKalenderTahun(calendarYear, calendarMonth);
+
+  // Konsumsi data kalender tahun berjalan untuk evaluasi agenda terdekat hari ini
+  // (Zero-Loading: jika calendarYear === todayParsed.year, TanStack Query langsung
+  // menggunakan instance query yang sama di memori RAM).
+  const { kalenderData: todayYearCalendarDays = [] } = useKalenderTahun(todayParsed.year);
+
+  // Konsumsi master data 461 pura resmi dari Backend Go (staleTime 24 jam di RAM)
+  const { data: purasList = [] } = useAllPuras();
 
   // ---------------------------------------------------------------------------
   // 3. Kompilasi Data Hero "HARI INI"
@@ -142,22 +154,20 @@ export function useDashboardData() {
   // 6. Navigasi Pergantian Bulan pada Mini Kalender (< >)
   // ---------------------------------------------------------------------------
   const handlePrevMonth = useCallback(() => {
-    setCalendarMonth((prev) => {
-      if (prev === 1) {
-        setCalendarYear((y) => y - 1);
-        return 12;
+    setCalendarDate((prev) => {
+      if (prev.month === 1) {
+        return { year: prev.year - 1, month: 12 };
       }
-      return prev - 1;
+      return { ...prev, month: prev.month - 1 };
     });
   }, []);
 
   const handleNextMonth = useCallback(() => {
-    setCalendarMonth((prev) => {
-      if (prev === 12) {
-        setCalendarYear((y) => y + 1);
-        return 1;
+    setCalendarDate((prev) => {
+      if (prev.month === 12) {
+        return { year: prev.year + 1, month: 1 };
       }
-      return prev + 1;
+      return { ...prev, month: prev.month + 1 };
     });
   }, []);
 
@@ -181,10 +191,31 @@ export function useDashboardData() {
   // ---------------------------------------------------------------------------
   // 8. Integrasi Data Dewasa Ayu Hari Ini & Piodalan Terdekat (Masing-masing 3 Item)
   // ---------------------------------------------------------------------------
-  // Mengembalikan data mock yang modular. Siap digantikan fetcher TanStack Query
-  // ketika API Backend Go untuk Dewasa Ayu dan Piodalan telah rampung.
   const dewasaAyu: DewasaAyuDashboard = DEFAULT_DEWASA_AYU;
-  const piodalan: PiodalanDashboardItem[] = DEFAULT_PIODALAN_LIST;
+
+  // Ekstraksi 3 piodalan pura terdekat setelah hari ini dari data real kalender & pura resmi
+  const realUpcomingPiodalan: PiodalanDashboardItem[] = useMemo(() => {
+    // Gabungkan hari kalender tahun ini dan tahun depan jika kalender aktif di tahun berikutnya
+    const daysPool =
+      calendarYear === todayParsed.year + 1 && rawCalendarDays.length > 0
+        ? [...todayYearCalendarDays, ...rawCalendarDays]
+        : todayYearCalendarDays;
+
+    return extractTopUpcomingPiodalan(
+      daysPool,
+      purasList,
+      todayWITA,
+      3
+    );
+  }, [todayYearCalendarDays, rawCalendarDays, purasList, todayWITA, calendarYear, todayParsed.year]);
+
+  // Gunakan data real piodalan jika berhasil dimuat, atau fallback anggun ke DEFAULT_PIODALAN_LIST
+  const piodalan: PiodalanDashboardItem[] = useMemo(() => {
+    if (realUpcomingPiodalan.length > 0) {
+      return realUpcomingPiodalan;
+    }
+    return DEFAULT_PIODALAN_LIST;
+  }, [realUpcomingPiodalan]);
 
   return {
     // Data Hero Hari Ini

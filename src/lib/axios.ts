@@ -1,20 +1,32 @@
 import axios from 'axios';
+import { useAuthStore } from '@/stores/useAuthStore';
 
-// 1. Buat instance Axios terpusat
+/**
+ * ==============================================================================
+ * INSTANCE AXIOS TERPUSAT (Kalender Bali API Client)
+ * ==============================================================================
+ * Menghubungkan frontend React dengan backend Go.
+ * Menggunakan baseURL dari environment atau default '/api/v1' yang diteruskan via Vite Proxy.
+ */
 export const apiClient = axios.create({
-  // Jika menggunakan Vite Proxy, baseURL cukup '/api/v1'
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000, // Timeout 15 detik jika backend tidak merespons
+  timeout: 15000, // Timeout 15 detik untuk mengantisipasi jaringan lambat
 });
 
-// 2. Request Interceptor: Otomatis sisipkan Bearer Token JWT jika sudah login
+/**
+ * ==============================================================================
+ * REQUEST INTERCEPTOR: SINKRONISASI BEARER TOKEN JWT
+ * ==============================================================================
+ * Membaca token akses secara langsung dari Zustand useAuthStore (Single Source of Truth).
+ * Mencegah anti-pattern penyimpanan ganda pada localStorage.
+ */
 apiClient.interceptors.request.use(
   (config) => {
-    // Ambil token dari localStorage
-    const token = localStorage.getItem('auth_token');
+    // Ambil token aktif dari state Zustand
+    const token = useAuthStore.getState().token;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -25,31 +37,58 @@ apiClient.interceptors.request.use(
   }
 );
 
-// 3. Response Interceptor: Tangani error umum dari backend secara terpusat
+/**
+ * ==============================================================================
+ * RESPONSE INTERCEPTOR: PENANGANAN STATUS & EKSTRAKSI ERROR BACKEND
+ * ==============================================================================
+ * Meneruskan respon sukses (2xx) dan mengekstrak struktur error terstandarisasi dari Go
+ * (seperti: reason, remaining_attempts, retry_at, atau EMAIL_NOT_VERIFIED).
+ */
 apiClient.interceptors.response.use(
   (response) => {
-    // Response sukses (status 2xx) langsung diteruskan
     return response;
   },
   (error) => {
-    // Tangani jika sesi login habis / token expired (401 Unauthorized)
+    // Jika token tidak valid / kedaluwarsa (401 Unauthorized), hapus sesi pengguna
     if (error.response?.status === 401) {
-      localStorage.removeItem('auth_token');
-      // Opsional: bisa redirect ke halaman login jika rute dilindungi
-      // window.location.href = '/login';
+      useAuthStore.getState().logout();
     }
 
-    // Ekstrak pesan error dari response backend Go jika ada
+    // Ekstrak pesan dan metadata error terstruktur dari backend Go
     const errorPayload = error.response?.data;
-    const errorMessage =
+    let errorMessage =
       errorPayload?.error?.message ||
       errorPayload?.message ||
-      (typeof errorPayload?.error === 'string' ? errorPayload.error : null) ||
-      'Terjadi kesalahan pada server';
+      (typeof errorPayload?.error === 'string' ? errorPayload.error : null);
 
-    const err = new Error(errorMessage) as Error & { status?: number; code?: string; response?: any };
+    // Jika backend offline atau proxy 502 Bad Gateway
+    if (!errorMessage) {
+      if (error.response?.status === 502) {
+        errorMessage = 'Server backend Go (Port 8080) sedang tidak aktif atau tidak dapat dijangkau. Silakan jalankan backend terlebih dahulu.';
+      } else if (error.code === 'ERR_NETWORK') {
+        errorMessage = 'Koneksi jaringan gagal. Tidak dapat menghubungi server backend.';
+      } else {
+        errorMessage = 'Terjadi kesalahan pada server';
+      }
+    }
+
+    // Buat objek Error kaya metadata untuk dikonsumsi oleh komponen antarmuka
+    const err = new Error(errorMessage) as Error & {
+      status?: number;
+      code?: string;
+      reason?: string;
+      remainingAttempts?: number;
+      retryAt?: string | null;
+      email?: string;
+      response?: typeof error.response;
+    };
+
     err.status = error.response?.status;
-    err.code = errorPayload?.error?.code;
+    err.code = errorPayload?.code || errorPayload?.error?.code;
+    err.reason = errorPayload?.reason;
+    err.remainingAttempts = errorPayload?.remaining_attempts;
+    err.retryAt = errorPayload?.retry_at;
+    err.email = errorPayload?.email; // Berguna untuk error 403 EMAIL_NOT_VERIFIED
     err.response = error.response;
 
     return Promise.reject(err);

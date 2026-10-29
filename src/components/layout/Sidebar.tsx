@@ -6,12 +6,13 @@ import {
   FileText,
   Landmark,
   Newspaper,
-  User,
+  Users,
   ChevronDown,
   ChevronRight,
   X,
 } from 'lucide-react';
 import { useSidebarStore } from '@/stores/useSidebarStore';
+import { useAuthStore } from '@/stores/useAuthStore';
 
 /**
  * Tipe data untuk struktur item navigasi tunggal
@@ -37,6 +38,12 @@ export default function Sidebar() {
   const { isCollapsed, isMobileOpen, closeMobile, openMenus, toggleSubmenu } =
     useSidebarStore();
   const location = useLocation();
+
+  // Mengambil state autentikasi untuk memeriksa apakah pengguna sedang login sebagai Administrator
+  const { user, isAuthenticated } = useAuthStore();
+  const isAdmin = Boolean(
+    isAuthenticated && user && (user.role || '').trim().toLowerCase() === 'admin'
+  );
 
   /**
    * Definisi daftar menu navigasi utama sesuai dengan desain mockup
@@ -72,14 +79,16 @@ export default function Sidebar() {
   ];
 
   /**
-   * Definisi menu Autentikasi / Akun
+   * Definisi menu Manajemen User khusus Administrator (Sesuai Desain Mockup)
+   * Hanya tampil ketika pengguna login dengan role Admin.
    */
-  const authGroup: NavGroup = {
-    label: 'Autentikasi',
-    icon: User,
+  const adminGroup: NavGroup = {
+    label: 'Manajemen User',
+    icon: Users,
     children: [
-      { to: '/kelola-pengguna', label: 'Kelola Pengguna' },
-      { to: '/login', label: 'Masuk / Profil' },
+      { to: '/admin/users', label: 'Manajemen User' },
+      { to: '/admin/transaksi', label: 'Transaksi User' },
+      { to: '/admin/kontribusi', label: 'Pengajuan Kontribusi' },
     ],
   };
 
@@ -120,10 +129,12 @@ export default function Sidebar() {
             className="flex items-center gap-3 group overflow-hidden [touch-action:manipulation]"
             title="Kembali ke Beranda"
           >
-            {/* Logo Ikon Tirta Bali (AGENTS.md Primary Brand #0e9f90 to Emerald) */}
-            <div className="w-10 h-10 rounded-xl bg-linear-to-br from-[#0e9f90] via-teal-600 to-emerald-600 flex items-center justify-center text-white font-extrabold text-base shadow-xs shrink-0 group-hover:scale-105 transition-transform">
-              <span className="font-extrabold tracking-tight text-white">KB</span>
-            </div>
+            {/* Logo Resmi Kalender Bali (SVG) */}
+            <img
+              src="/assets/images/icon/logo-kalenderbali.svg"
+              alt="Logo Kalender Bali"
+              className="w-10 h-10 shrink-0 object-contain group-hover:scale-105 transition-transform"
+            />
 
             {/* Nama & Tagline Aplikasi (Disembunyikan saat Desktop Collapsed) */}
             {!isCollapsed && (
@@ -281,68 +292,70 @@ export default function Sidebar() {
               );
             })}
 
-            {/* Menu Accordion: Autentikasi */}
-            <div>
-              <button
-                type="button"
-                onClick={() => toggleSubmenu(authGroup.label)}
-                className={`group relative w-full flex items-center justify-between px-3.5 min-h-11 rounded-xl text-sm font-medium border border-transparent transition-colors duration-150 text-slate-600 hover:text-[#0f172a] hover:bg-slate-100/70 outline-none focus:outline-none [touch-action:manipulation] cursor-pointer ${
-                  isCollapsed ? 'justify-center px-0' : ''
-                }`}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <authGroup.icon size={20} className="shrink-0" />
-                  {!isCollapsed && <span className="truncate">{authGroup.label}</span>}
-                </div>
-
-                {!isCollapsed && (
-                  <span className="text-slate-400 transition-transform duration-200">
-                    {openMenus[authGroup.label] ? (
-                      <ChevronDown size={16} />
-                    ) : (
-                      <ChevronRight size={16} />
-                    )}
-                  </span>
-                )}
-
-                {/* Tooltip collapsed */}
-                {isCollapsed && (
-                  <span className="absolute left-full ml-3 px-2.5 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-lg shadow-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
-                    {authGroup.label}
-                  </span>
-                )}
-              </button>
-
-              {/* Sub-item Autentikasi dengan Smooth Grid Accordion */}
-              {!isCollapsed && (
-                <div
-                  className={`grid transition-all duration-200 ease-in-out ${
-                    openMenus[authGroup.label]
-                      ? 'grid-rows-[1fr] opacity-100 mt-1'
-                      : 'grid-rows-[0fr] opacity-0'
+            {/* Menu Accordion: Manajemen User (Khusus Administrator) */}
+            {isAdmin && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => toggleSubmenu(adminGroup.label)}
+                  className={`group relative w-full flex items-center justify-between px-3.5 min-h-11 rounded-xl text-sm font-medium border border-transparent transition-colors duration-150 text-slate-600 hover:text-[#0f172a] hover:bg-slate-100/70 outline-none focus:outline-none [touch-action:manipulation] cursor-pointer ${
+                    isCollapsed ? 'justify-center px-0' : ''
                   }`}
                 >
-                  <div className="overflow-hidden ml-5 pl-4 border-l border-slate-200/80 space-y-1">
-                    {authGroup.children.map((subItem) => (
-                      <NavLink
-                        key={subItem.to}
-                        to={subItem.to}
-                        onClick={closeMobile}
-                        className={({ isActive }) =>
-                          `flex items-center min-h-9 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-150 outline-none focus:outline-none [touch-action:manipulation] ${
-                            isActive
-                              ? 'text-teal-700 bg-teal-50/80 font-semibold border-teal-200/40'
-                              : 'border-transparent text-slate-500 hover:text-[#0f172a] hover:bg-slate-100/60'
-                          }`
-                        }
-                      >
-                        {subItem.label}
-                      </NavLink>
-                    ))}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <adminGroup.icon size={20} className="shrink-0" />
+                    {!isCollapsed && <span className="truncate">{adminGroup.label}</span>}
                   </div>
-                </div>
-              )}
-            </div>
+
+                  {!isCollapsed && (
+                    <span className="text-slate-400 transition-transform duration-200">
+                      {openMenus[adminGroup.label] ? (
+                        <ChevronDown size={16} />
+                      ) : (
+                        <ChevronRight size={16} />
+                      )}
+                    </span>
+                  )}
+
+                  {/* Tooltip collapsed */}
+                  {isCollapsed && (
+                    <span className="absolute left-full ml-3 px-2.5 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-lg shadow-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                      {adminGroup.label}
+                    </span>
+                  )}
+                </button>
+
+                {/* Sub-item Manajemen User dengan Smooth Grid Accordion */}
+                {!isCollapsed && (
+                  <div
+                    className={`grid transition-all duration-200 ease-in-out ${
+                      openMenus[adminGroup.label]
+                        ? 'grid-rows-[1fr] opacity-100 mt-1'
+                        : 'grid-rows-[0fr] opacity-0'
+                    }`}
+                  >
+                    <div className="overflow-hidden ml-5 pl-4 border-l border-slate-200/80 space-y-1">
+                      {adminGroup.children.map((subItem) => (
+                        <NavLink
+                          key={subItem.to}
+                          to={subItem.to}
+                          onClick={closeMobile}
+                          className={({ isActive }) =>
+                            `flex items-center min-h-9 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-150 outline-none focus:outline-none [touch-action:manipulation] ${
+                              isActive
+                                ? 'text-teal-700 bg-teal-50/80 font-semibold border-teal-200/40'
+                                : 'border-transparent text-slate-500 hover:text-[#0f172a] hover:bg-slate-100/60'
+                            }`
+                          }
+                        >
+                          {subItem.label}
+                        </NavLink>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </nav>
         </div>
       </aside>

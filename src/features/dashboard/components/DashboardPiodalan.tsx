@@ -37,8 +37,7 @@ export const DashboardPiodalan: React.FC<DashboardPiodalanProps> = ({
     : items || (data ? [data] : []);
 
   const topThreePiodalan = piodalanList.slice(0, 3);
-  const actionUrl = topThreePiodalan[0]?.actionUrl || '/piodalan';
-  const nearestDaysRemaining = topThreePiodalan[0]?.daysRemainingText || '10 HARI LAGI';
+  const nearestDaysRemaining = topThreePiodalan[0]?.daysRemainingText || 'HARI INI';
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-xs flex flex-col justify-between h-full">
@@ -68,7 +67,7 @@ export const DashboardPiodalan: React.FC<DashboardPiodalanProps> = ({
           {topThreePiodalan.map((pio) => (
             <div
               key={pio.id}
-              onClick={() => navigate(actionUrl)}
+              onClick={() => navigate(pio.actionUrl || '/piodalan')}
               className="flex items-center gap-3 p-2.5 sm:p-3 rounded-xl bg-[#f8fafc] border border-slate-200/70 hover:border-teal-300 hover:bg-white hover:shadow-2xs transition-all cursor-pointer group"
             >
               {/* Ikon Vektor Siluet Pelinggih Pura Bali di Kotak Mint */}
@@ -120,13 +119,13 @@ export const DashboardPiodalan: React.FC<DashboardPiodalanProps> = ({
       {/* =================================================================== */}
       <div className="flex items-center justify-between gap-4 pt-3 mt-4 border-t border-slate-100">
         <span className="text-xs font-semibold text-slate-400 tabular-nums">
-          3 Piodalan Terdekat
+          {topThreePiodalan.length > 0 ? `${topThreePiodalan.length} Piodalan Terdekat` : 'Piodalan Terdekat'}
         </span>
 
         {/* Tautan Navigasi ke Halaman Piodalan Lengkap */}
         <button
           type="button"
-          onClick={() => navigate(actionUrl)}
+          onClick={() => navigate('/piodalan')}
           className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0d9488] hover:text-[#0c8a7d] transition-colors cursor-pointer [touch-action:manipulation] py-1"
         >
           <span>Lihat selengkapnya</span>

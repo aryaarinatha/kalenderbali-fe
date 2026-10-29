@@ -14,13 +14,16 @@
 
 import type { KalenderHarian } from '@/features/kalender/types/kalender.types';
 import {
+  formatFullIndoDate,
   getTodayWITA,
   toISODateString,
 } from '@/features/kalender/utils/calendarUtils';
 import type {
   DashboardMiniCalendarDay,
+  PiodalanDashboardItem,
   UpcomingHariRayaItem,
 } from '../types/dashboard.types';
+import type { PuraBackendItem } from '@/features/piodalan/types/piodalan.types';
 import { getHariRayaSubtext } from '../data/dashboardMockData';
 
 // ---------------------------------------------------------------------------
@@ -362,4 +365,206 @@ export function extractTopUpcomingHariRaya(
   }
 
   return upcomingItems;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Penarik Maksimal 3 Piodalan Terdekat dari Hari Ini (Data Real BE/FE)
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalisasi string wewaran/sasih agar toleran terhadap variasi kapitalisasi dan penulisan.
+ */
+const normString = (s?: string | null): string => {
+  if (!s) return '';
+  const lower = s.toLowerCase().trim();
+  if (lower === 'kedasa') return 'kadasa';
+  if (lower === 'kenam') return 'kanem';
+  return lower;
+};
+
+/**
+ * Kapitalisasi huruf pertama string (contoh: "buda" -> "Buda").
+ */
+const capFirstLetter = (text?: string | null): string => {
+  if (!text) return '';
+  const trimmed = text.trim();
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+};
+
+/**
+ * Bobot prioritas kategori pura untuk penentuan urutan nama pura terkemuka:
+ * Kahyangan Jagat / Sad Kahyangan (1) > Dang Kahyangan (2) > Kahyangan Tiga (3) > Swagina (4) > Kawitan (5) > Lainnya (6).
+ */
+const getPuraPriorityScore = (type?: string | null): number => {
+  const t = (type || '').toLowerCase();
+  if (t.includes('kahyangan jagat') || t.includes('sad kahyangan')) return 1;
+  if (t.includes('dang kahyangan')) return 2;
+  if (t.includes('kahyangan tiga')) return 3;
+  if (t.includes('swagina')) return 4;
+  if (t.includes('kawitan')) return 5;
+  return 6;
+};
+
+/**
+ * Mengekstrak jadwal piodalan pura terdekat setelah hari ini (todayDateISO)
+ * dari data real penanggalan kalender dan master 461 pura backend Go.
+ *
+ * Logika Pencocokan:
+ *  1. Berbasis Pawukon (210 Hari): Mencocokkan Wuku + Saptawara + Pancawara pura dengan wewaran hari kalender.
+ *  2. Berbasis Sasih (Candra): Mencocokkan Sasih + Purnama/Tilem pura dengan pengalantaka hari kalender.
+ *  3. Mengelompokkan pura yang memiliki piodalan pada hari yang sama.
+ *  4. Memilih maksimal 3 pura terkemuka berdasarkan bobot kategori pura (Kahyangan Jagat dsb).
+ *  5. Menghitung countdown sisa hari (HARI INI, BESOK, X HARI LAGI).
+ *
+ * @param allDays Daftar hari kalender dari backend Go
+ * @param puras Daftar master pura resmi dari backend Go
+ * @param todayDateISO Tanggal hari ini zona WITA ("YYYY-MM-DD")
+ * @param limit Jumlah maksimal agenda piodalan terdekat (default: 3)
+ */
+export function extractTopUpcomingPiodalan(
+  allDays: KalenderHarian[],
+  puras: PuraBackendItem[],
+  todayDateISO: string,
+  limit: number = 3
+): PiodalanDashboardItem[] {
+  if (
+    !Array.isArray(puras) ||
+    puras.length === 0 ||
+    !Array.isArray(allDays) ||
+    allDays.length === 0
+  ) {
+    return [];
+  }
+
+  // 1. Indeks pura ke dalam hash map untuk pencarian O(1)
+  const pawukonMap = new Map<string, PuraBackendItem[]>();
+  const sasihMap = new Map<string, PuraBackendItem[]>();
+
+  for (const p of puras) {
+    const pWuku = normString(p.wuku);
+    const pSapta = normString(p.saptawara);
+    const pPanca = normString(p.pancawara);
+    if (pWuku && pSapta && pPanca) {
+      const key = `${pWuku}|${pSapta}|${pPanca}`;
+      const list = pawukonMap.get(key) || [];
+      list.push(p);
+      pawukonMap.set(key, list);
+    }
+
+    const pSasih = normString(p.sasih);
+    const pPT = normString(p.purnama_tilem);
+    if (pSasih && pPT) {
+      const key = `${pSasih}|${pPT}`;
+      const list = sasihMap.get(key) || [];
+      list.push(p);
+      sasihMap.set(key, list);
+    }
+  }
+
+  // 2. Urutkan hari kalender secara kronologis
+  const sortedDays = [...allDays].sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+  const results: PiodalanDashboardItem[] = [];
+
+  for (const day of sortedDays) {
+    // Lewati tanggal-tanggal lampau (hanya ambil hari ini dan masa depan)
+    if (day.tanggal < todayDateISO) {
+      continue;
+    }
+
+    const dWuku = normString(day.wewaran?.wuku?.nama);
+    const dSapta = normString(day.wewaran?.saptawara?.nama);
+    const dPanca = normString(day.wewaran?.pancawara?.nama);
+    const dSasih = normString(day.sasih?.nama_sasih);
+    const dPT = normString(day.pengalantaka?.purnama_tilem);
+
+    const pawukonPuras =
+      dWuku && dSapta && dPanca
+        ? pawukonMap.get(`${dWuku}|${dSapta}|${dPanca}`) || []
+        : [];
+
+    const sasihPuras =
+      dSasih && (dPT === 'purnama' || dPT === 'tilem')
+        ? sasihMap.get(`${dSasih}|${dPT}`) || []
+        : [];
+
+    // Gabungkan pura yang piodalannya jatuh pada tanggal ini (dedup by id)
+    const combinedMap = new Map<number, PuraBackendItem>();
+    for (const p of pawukonPuras) combinedMap.set(p.id, p);
+    for (const p of sasihPuras) combinedMap.set(p.id, p);
+
+    const matchedPuras = Array.from(combinedMap.values());
+    if (matchedPuras.length === 0) {
+      continue;
+    }
+
+    // Urutkan pura berdasarkan prioritas kesakralan pura terkemuka
+    matchedPuras.sort((a, b) => {
+      const prioA = getPuraPriorityScore(a.type);
+      const prioB = getPuraPriorityScore(b.type);
+      if (prioA !== prioB) return prioA - prioB;
+      return a.name.localeCompare(b.name, 'id');
+    });
+
+    const topTemples = matchedPuras.slice(0, 3).map((p) => p.name);
+
+    // Tentukan label Rahina yang representatif
+    let rahina: string;
+    if (
+      pawukonPuras.length > 0 &&
+      day.wewaran?.saptawara?.nama &&
+      day.wewaran?.pancawara?.nama &&
+      day.wewaran?.wuku?.nama
+    ) {
+      rahina = `${capFirstLetter(day.wewaran.saptawara.nama)} ${capFirstLetter(day.wewaran.pancawara.nama)} ${capFirstLetter(day.wewaran.wuku.nama)}`;
+    } else if (sasihPuras.length > 0) {
+      const ptName =
+        dPT === 'purnama'
+          ? 'Purnama'
+          : dPT === 'tilem'
+            ? 'Tilem'
+            : capFirstLetter(day.pengalantaka?.purnama_tilem);
+      rahina = `${ptName} Sasih ${capFirstLetter(day.sasih?.nama_sasih)}`;
+    } else {
+      rahina = `${capFirstLetter(day.wewaran?.saptawara?.nama)} ${capFirstLetter(day.wewaran?.pancawara?.nama)} ${capFirstLetter(day.wewaran?.wuku?.nama)}`;
+    }
+
+    const daysRemaining = computeDaysDifference(day.tanggal, todayDateISO);
+    const daysRemainingText = formatDaysRemainingText(daysRemaining);
+    const tanggalFormatted = formatFullIndoDate(day.tanggal);
+
+    // URL Aksi: Jika piodalan Pawukon, arahkan ke pencarian wewaran spesifik di /piodalan
+    let actionUrl = '/piodalan';
+    const targetYear = day.tanggal.split('-')[0];
+    if (
+      pawukonPuras.length > 0 &&
+      day.wewaran?.saptawara?.nama &&
+      day.wewaran?.pancawara?.nama &&
+      day.wewaran?.wuku?.nama
+    ) {
+      const sapta = capFirstLetter(day.wewaran.saptawara.nama);
+      const panca = capFirstLetter(day.wewaran.pancawara.nama);
+      const wuku = capFirstLetter(day.wewaran.wuku.nama);
+      actionUrl = `/piodalan?tab=wewaran&saptawara=${encodeURIComponent(sapta)}&pancawara=${encodeURIComponent(panca)}&wuku=${encodeURIComponent(wuku)}&tahun=${targetYear}&searched=true`;
+    } else if (sasihPuras.length > 0) {
+      const targetMonth = parseInt(day.tanggal.split('-')[1], 10);
+      actionUrl = `/piodalan?tab=bulan&bulan=${targetMonth}&tahun=${targetYear}&searched=true`;
+    }
+
+    results.push({
+      id: `pio-${day.tanggal}`,
+      rahina,
+      daysRemaining,
+      daysRemainingText,
+      topTemples,
+      tanggalISO: day.tanggal,
+      tanggalFormatted,
+      actionUrl,
+    });
+
+    if (results.length >= limit) {
+      break;
+    }
+  }
+
+  return results;
 }
