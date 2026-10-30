@@ -7,9 +7,9 @@ import {
   parseISODate,
   getHariRayaBadgeStyle,
 } from '../utils/calendarUtils';
+import { useDayPiodalan } from '../hooks/useKalender';
 import {
   getDewasaAyuForDate,
-  getPiodalanForDate,
 } from '../data/dummyCalendarData';
 import { HariRayaDetailModal } from './HariRayaDetailModal';
 
@@ -64,9 +64,14 @@ export const CalendarInspector: React.FC<CalendarInspectorProps> = ({
   // Daftar hari raya / rerainan pada tanggal terpilih
   const hariRayaList = selectedData?.hari_raya || [];
 
-  // Data Dewasa Ayu & Piodalan
+  // Data Dewasa Ayu & Piodalan Real dari Mesin Pencarian Go (Hybrid Resilient Engine)
   const dewasaAyu = getDewasaAyuForDate(selectedDate);
-  const { items: piodalanList, totalCount: piodalanTotal } = getPiodalanForDate(selectedDate);
+  const { data: dayPiodalanData, isLoading: isLoadingDayPio } = useDayPiodalan(
+    selectedDate,
+    selectedData
+  );
+  const piodalanList = dayPiodalanData?.items || [];
+  const piodalanTotal = dayPiodalanData?.totalCount ?? 0;
 
   // Status Purnama / Tilem jika ada pada tanggal ini
   const purnamaTilem =
@@ -228,35 +233,49 @@ export const CalendarInspector: React.FC<CalendarInspectorProps> = ({
                 Piodalan hari ini
               </span>
               <span className="text-xs font-bold text-[#0d9488] tabular-nums">
-                {piodalanTotal} lokasi
+                {isLoadingDayPio ? 'Memuat...' : `${piodalanTotal} lokasi`}
               </span>
             </div>
 
             <div className="space-y-2.5">
-              {piodalanList.map((pio) => (
-                <div
-                  key={pio.id}
-                  className="flex items-center gap-3.5 p-3 rounded-xl border border-slate-100/90 bg-[#f8fafc] hover:bg-slate-100/70 transition-colors [touch-action:manipulation]"
-                >
-                  <div
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                      pio.accentColor === 'amber'
-                        ? 'bg-[#fef3c7] text-[#d97706]'
-                        : 'bg-[#e6f7f5] text-[#0d9488]'
-                    }`}
-                  >
-                    <Landmark className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <span className="text-xs sm:text-sm font-bold text-[#0f172a] block truncate">
-                      {pio.puraName}
-                    </span>
-                    <span className="text-xs text-slate-400 font-medium block truncate tabular-nums">
-                      {pio.location} · {pio.distance}
-                    </span>
-                  </div>
+              {isLoadingDayPio ? (
+                <div className="p-3.5 rounded-xl border border-slate-100/90 bg-[#f8fafc] text-center">
+                  <span className="text-xs text-slate-400 font-medium">
+                    Memeriksa agenda piodalan pura...
+                  </span>
                 </div>
-              ))}
+              ) : piodalanList.length === 0 ? (
+                <div className="p-3.5 rounded-xl border border-slate-100/90 bg-[#f8fafc] text-center">
+                  <span className="text-xs text-slate-400 font-medium">
+                    Tidak ada perayaan piodalan pura pada tanggal ini.
+                  </span>
+                </div>
+              ) : (
+                piodalanList.map((pio) => (
+                  <div
+                    key={pio.id}
+                    className="flex items-center gap-3.5 p-3 rounded-xl border border-slate-100/90 bg-[#f8fafc] hover:bg-slate-100/70 transition-colors [touch-action:manipulation]"
+                  >
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        pio.accentColor === 'amber'
+                          ? 'bg-[#fef3c7] text-[#d97706]'
+                          : 'bg-[#e6f7f5] text-[#0d9488]'
+                      }`}
+                    >
+                      <Landmark className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs sm:text-sm font-bold text-[#0f172a] block truncate">
+                        {pio.puraName}
+                      </span>
+                      <span className="text-xs text-slate-400 font-medium block truncate tabular-nums">
+                        {pio.location} · {pio.distance}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

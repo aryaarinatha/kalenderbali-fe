@@ -1,11 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { KalenderHarian, HariRayaItem } from '../types/kalender.types';
+import type { KalenderHarian, HariRayaItem, PiodalanTerdekatItem } from '../types/kalender.types';
 import { formatFullIndoDate, getHariRayaBadgeStyle } from '../utils/calendarUtils';
-import {
-  DUMMY_MONTHLY_PIODALAN_TOTAL,
-  DUMMY_UPCOMING_PIODALAN,
-} from '../data/dummyCalendarData';
 import { HariRayaDetailModal } from './HariRayaDetailModal';
 
 /**
@@ -18,7 +14,7 @@ import { HariRayaDetailModal } from './HariRayaDetailModal';
  *     - Navigasi panah (< dan >) seperti di kalender untuk menjelajahi kartu.
  *     - Mengklik kartu membuka HariRayaDetailModal dengan penjelasan lengkap.
  *  2. Sisi Kanan (~35%): "Piodalan Terdekat"
- *     - Menampilkan daftar piodalan pura terdekat dalam bulan kalender.
+ *     - Menampilkan daftar piodalan pura terdekat dalam bulan kalender dari backend Go.
  * ============================================================================
  */
 
@@ -26,6 +22,10 @@ interface CalendarBottomSectionProps {
   monthlyHolidays: KalenderHarian[];
   onSelectDate: (dateString: string) => void;
   onNavigateToFullHoliday?: () => void;
+  monthlyPiodalans?: PiodalanTerdekatItem[];
+  monthlyPiodalanTotal?: number;
+  activeYear?: number;
+  activeMonth?: number;
 }
 
 interface HolidayCardData {
@@ -38,12 +38,25 @@ const ITEMS_PER_PAGE = 3;
 export const CalendarBottomSection: React.FC<CalendarBottomSectionProps> = ({
   monthlyHolidays,
   onSelectDate,
+  monthlyPiodalans,
+  monthlyPiodalanTotal,
 }) => {
+  // Evaluasi daftar piodalan: 100% data riil dari mesin piodalan backend Go
+  const piodalanDisplayList = monthlyPiodalans || [];
+  const piodalanTotalLocations = monthlyPiodalanTotal ?? 0;
+
   // State untuk modal penjelasan hari raya yang dipilih
   const [selectedHoliday, setSelectedHoliday] = useState<HariRayaItem | null>(null);
 
   // State halaman saat ini untuk paginasi kartu hari raya
   const [currentPage, setCurrentPage] = useState(0);
+
+  // Reset ke halaman 1 jika bulan berganti (pola resmi React tanpa cascading renders)
+  const [prevHolidays, setPrevHolidays] = useState(monthlyHolidays);
+  if (prevHolidays !== monthlyHolidays) {
+    setPrevHolidays(monthlyHolidays);
+    setCurrentPage(0);
+  }
 
   // Kumpulkan seluruh hari raya di bulan aktif (termasuk jika 1 hari memiliki >1 rahinan)
   const holidayCards: HolidayCardData[] = [];
@@ -58,11 +71,6 @@ export const CalendarBottomSection: React.FC<CalendarBottomSectionProps> = ({
 
   // Hitung jumlah halaman
   const totalPages = Math.max(1, Math.ceil(holidayCards.length / ITEMS_PER_PAGE));
-
-  // Reset ke halaman 1 jika bulan berganti
-  useEffect(() => {
-    setCurrentPage(0);
-  }, [monthlyHolidays]);
 
   // Ambil kartu untuk halaman saat ini
   const startIndex = currentPage * ITEMS_PER_PAGE;
@@ -185,34 +193,46 @@ export const CalendarBottomSection: React.FC<CalendarBottomSectionProps> = ({
             Piodalan Terdekat
           </h3>
           <span className="text-[10px] font-extrabold text-[#0d9488] bg-[#e6f7f5] border border-teal-200/60 px-3 py-1 rounded-full uppercase tabular-nums">
-            {DUMMY_MONTHLY_PIODALAN_TOTAL} Lokasi
+            {piodalanTotalLocations} Lokasi
           </span>
         </div>
 
         {/* List 3 Piodalan Terdekat */}
         <div className="space-y-3">
-          {DUMMY_UPCOMING_PIODALAN.map((pio) => (
-            <div
-              key={pio.id}
-              className="flex items-center justify-between p-3 rounded-xl border border-slate-100/90 bg-[#f8fafc] hover:bg-slate-100/70 transition-colors cursor-pointer group [touch-action:manipulation]"
-            >
-              <div className="flex items-center gap-3.5">
-                <div className="w-10 h-10 rounded-xl bg-[#e6f7f5] text-[#0d9488] font-black text-sm flex items-center justify-center shrink-0 tabular-nums">
-                  {pio.dayNumber}
-                </div>
-                <div className="min-w-0">
-                  <span className="text-xs sm:text-sm font-bold text-[#0f172a] block truncate group-hover:text-[#0d9488] transition-colors">
-                    {pio.wukuTitle}
-                  </span>
-                  <span className="text-xs text-slate-400 font-medium block tabular-nums">
-                    {pio.puraCountText}
-                  </span>
-                </div>
-              </div>
-
-              <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors shrink-0" />
+          {piodalanDisplayList.length === 0 ? (
+            <div className="text-center py-6 text-xs text-slate-400">
+              Tidak ada agenda piodalan terdekat yang belum lewat.
             </div>
-          ))}
+          ) : (
+            piodalanDisplayList.map((pio) => (
+              <div
+                key={pio.id}
+                onClick={() => {
+                  // Jika memiliki tanggal spesifik, klik akan memfokuskan kalender ke tanggal tersebut
+                  if ('dateStr' in pio && typeof pio.dateStr === 'string' && pio.dateStr) {
+                    onSelectDate(pio.dateStr);
+                  }
+                }}
+                className="flex items-center justify-between p-3 rounded-xl border border-slate-100/90 bg-[#f8fafc] hover:bg-slate-100/70 transition-colors cursor-pointer group [touch-action:manipulation]"
+              >
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-[#e6f7f5] text-[#0d9488] font-black text-sm flex items-center justify-center shrink-0 tabular-nums">
+                    {pio.dayNumber}
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs sm:text-sm font-bold text-[#0f172a] block truncate group-hover:text-[#0d9488] transition-colors">
+                      {pio.wukuTitle}
+                    </span>
+                    <span className="text-xs text-slate-400 font-medium block tabular-nums">
+                      {pio.puraCountText}
+                    </span>
+                  </div>
+                </div>
+
+                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors shrink-0" />
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

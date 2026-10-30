@@ -96,6 +96,56 @@ export async function fetchPuraPiodalans(puraId: number | string): Promise<PuraP
 }
 
 /**
+ * fetchPuraPiodalanByDate mengambil rincian pelaksanaan piodalan pura pada tanggal tertentu:
+ * GET /api/v1/puras/:id/piodalans/:date
+ * Mendukung pembacaan akurat acara pada tanggal spesifik dalam zona WITA.
+ */
+export async function fetchPuraPiodalanByDate(
+  puraId: number | string,
+  dateStr: string
+): Promise<PuraPiodalanRecord | null> {
+  try {
+    const response = await apiClient.get(`/puras/${puraId}/piodalans/${dateStr}`);
+    const item = response.data?.data;
+    if (!item) return null;
+    return {
+      ...item,
+      ceremony_date: String(item.ceremony_date || item.date || ''),
+      date: String(item.date || item.ceremony_date || ''),
+      ceremony_level_name: String(item.ceremony_level_name || item.level || ''),
+      level: String(item.level || item.ceremony_level_name || ''),
+      ceremony_level_id: (item.ceremony_level_id ?? item.level_id ?? null) as number | null,
+      level_id: (item.level_id ?? item.ceremony_level_id ?? null) as number | null,
+    } as PuraPiodalanRecord;
+  } catch (error) {
+    console.error(`Gagal mengambil piodalan pura ID ${puraId} pada tanggal ${dateStr}:`, error);
+    return null;
+  }
+}
+
+/**
+ * fetchPuraAcaras mengambil seluruh tahapan acara untuk suatu pura:
+ * GET /api/v1/puras/:id/acaras
+ */
+export async function fetchPuraAcaras(puraId: number | string): Promise<PuraAcaraItem[]> {
+  try {
+    const response = await apiClient.get(`/puras/${puraId}/acaras`);
+    const data = response.data?.data;
+    if (!Array.isArray(data)) return [];
+    return data.map((item: Record<string, unknown>) => ({
+      ...item,
+      ceremony_level_name: String(item.ceremony_level_name || item.level || ''),
+      level: String(item.level || item.ceremony_level_name || ''),
+      ceremony_level_id: (item.ceremony_level_id ?? item.level_id ?? null) as number | null,
+      level_id: (item.level_id ?? item.ceremony_level_id ?? null) as number | null,
+    })) as PuraAcaraItem[];
+  } catch (error) {
+    console.error(`Gagal mengambil seluruh acara pura ID ${puraId}:`, error);
+    return [];
+  }
+}
+
+/**
  * fetchPiodalanAcaras mengambil susunan tahapan acara piodalan (Melasti, Puncak, Nyineb):
  * GET /api/v1/piodalans/:id/acaras
  */

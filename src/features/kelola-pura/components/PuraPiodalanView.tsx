@@ -29,6 +29,7 @@ import {
   useAcaraMutations,
   usePiodalanSubmissions,
 } from '../hooks/useKelolaPura';
+import { fetchPiodalanAcaras } from '../api/kelolaPuraApi';
 import {
   formatDateWITA,
   formatTimeWITA,
@@ -143,6 +144,10 @@ export const PuraPiodalanView: React.FC<PuraPiodalanViewProps> = ({
   const [piodalanToDelete, setPiodalanToDelete] = useState<PuraPiodalanRecord | null>(null);
   const [acaraToDelete, setAcaraToDelete] = useState<PuraAcaraItem | null>(null);
 
+  // State pelacakan alur konfirmasi hapus 2-tahap jika piodalan memiliki susunan acara
+  const [isCheckingAcaras, setIsCheckingAcaras] = useState<boolean>(false);
+  const [piodalanAcarasCount, setPiodalanAcarasCount] = useState<number>(0);
+
   // Konfigurasi gaya badge tipe pura dan ringkasan penanggalan wariga
   const badgeStyle = getPuraTypeBadgeStyle(pura?.type);
   const observationSummary = pura ? getObservationSummary(pura) : 'Dasar penanggalan';
@@ -169,7 +174,36 @@ export const PuraPiodalanView: React.FC<PuraPiodalanViewProps> = ({
     }
   };
 
-  // Handler Hapus Siklus Piodalan
+  /**
+   * Handler inisiasi hapus piodalan oleh Admin:
+   * Memeriksa keterkaitan data susunan acara sebelum membuka dialog modal konfirmasi.
+   * Jika piodalan memiliki minimal 1 tahapan acara, modal akan menampilkan
+   * alur proteksi 2-tahap (peringatan kaskade acara -> konfirmasi final permanen).
+   */
+  const handleInitiateDeletePiodalan = async (piodalan: PuraPiodalanRecord) => {
+    try {
+      setIsCheckingAcaras(true);
+      let count = 0;
+      // Manfaatkan cache memori jika piodalan yang hendak dihapus sedang aktif dipilih di UI
+      if (activePiodalan && activePiodalan.id === piodalan.id && Array.isArray(acaras)) {
+        count = acaras.length;
+      } else {
+        // Ambil data susunan acara dari backend API jika belum ada di cache memori
+        const childList = await fetchPiodalanAcaras(piodalan.id);
+        count = Array.isArray(childList) ? childList.length : 0;
+      }
+      setPiodalanAcarasCount(count);
+      setPiodalanToDelete(piodalan);
+    } catch (err) {
+      console.error('Gagal mengecek keterkaitan susunan acara piodalan:', err);
+      setPiodalanAcarasCount(0);
+      setPiodalanToDelete(piodalan);
+    } finally {
+      setIsCheckingAcaras(false);
+    }
+  };
+
+  // Handler Hapus Siklus Piodalan (Eksekusi Akhir ke Backend)
   const handleConfirmDeletePiodalan = async () => {
     if (!piodalanToDelete) return;
     try {
@@ -178,8 +212,9 @@ export const PuraPiodalanView: React.FC<PuraPiodalanViewProps> = ({
         setSelectedPiodalanId(null);
       }
       setPiodalanToDelete(null);
+      setPiodalanAcarasCount(0);
     } catch {
-      // Error ditangani di hook
+      // Error ditangani di level hook usePiodalanMutations
     }
   };
 
@@ -402,26 +437,20 @@ export const PuraPiodalanView: React.FC<PuraPiodalanViewProps> = ({
                             {formatDateWITA(piodalan.ceremony_date || piodalan.date || '')}
                           </span>
                           <div className="flex items-center gap-1.5">
-                            {/* Tombol Hapus Piodalan Khusus Admin */}
+                            {/* Tombol Hapus Piodalan Khusus Admin (Memicu Pengecekan 2-Tahap) */}
                             {isAdmin && (
-                              <span
-                                role="button"
-                                tabIndex={0}
+                              <button
+                                type="button"
+                                disabled={isCheckingAcaras || isDeletingPiodalan}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setPiodalanToDelete(piodalan);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.stopPropagation();
-                                    setPiodalanToDelete(piodalan);
-                                  }
+                                  handleInitiateDeletePiodalan(piodalan);
                                 }}
                                 title="Hapus jadwal piodalan"
-                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer disabled:opacity-50"
                               >
                                 <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                              </span>
+                              </button>
                             )}
                             <ChevronRight
                               className={`w-4 h-4 shrink-0 transition-transform ${
@@ -670,14 +699,26 @@ export const PuraPiodalanView: React.FC<PuraPiodalanViewProps> = ({
         />
       )}
 
-      {/* Modal Konfirmasi Hapus Siklus Piodalan */}
+      {/* Modal Konfirmasi Hapus Siklus Piodalan (Mendukung Alur Peringatan Kaskade 2-Tahap jika memiliki acara) */}
       <PiodalanDeleteConfirmModal
         isOpen={Boolean(piodalanToDelete)}
         title="Hapus Siklus Piodalan"
-        message="Apakah Anda yakin ingin menghapus data jadwal piodalan resmi ini? Seluruh tahapan susunan acara terkait siklus ini juga akan terhapus secara permanen."
-        itemName={piodalanToDelete ? `${formatDateWITA(piodalanToDelete.ceremony_date || piodalanToDelete.date || '')} - ${piodalanToDelete.description || 'Piodalan'}` : ''}
+        message="Apakah Anda benar-benar yakin ingin menghapus data jadwal piodalan resmi ini secara permanen?"
+        itemName={
+          piodalanToDelete
+            ? `${formatDateWITA(piodalanToDelete.ceremony_date || piodalanToDelete.date || '')} - ${
+                piodalanToDelete.description || 'Piodalan'
+              }`
+            : ''
+        }
+        hasChildItems={piodalanAcarasCount > 0}
+        childItemsCount={piodalanAcarasCount}
+        childWarningMessage={`Jadwal piodalan ini tercatat masih memiliki ${piodalanAcarasCount} tahapan susunan acara terdaftar. Menghapus piodalan ini akan sekaligus menghapus seluruh tahapan acara terkait secara permanen dari basis data.`}
         isLoading={isDeletingPiodalan}
-        onClose={() => setPiodalanToDelete(null)}
+        onClose={() => {
+          setPiodalanToDelete(null);
+          setPiodalanAcarasCount(0);
+        }}
         onConfirm={handleConfirmDeletePiodalan}
       />
 

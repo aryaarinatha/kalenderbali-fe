@@ -71,11 +71,12 @@ export default function Sidebar() {
 
   /**
    * Definisi menu informasi & fitur tambahan
+   * Menggantikan nama menu lama 'Info Kita' menjadi 'Warta Budaya'
    */
   const secondaryNavItems: NavItem[] = [
     { to: '/keterangan', label: 'Keterangan', icon: FileText },
     { to: '/kelola-pura', label: 'Kelola Pura', icon: Landmark },
-    { to: '/info-kita', label: 'Info Kita', icon: Newspaper },
+    { to: '/warta', label: 'Warta Budaya', icon: Newspaper },
   ];
 
   /**
@@ -259,7 +260,7 @@ export default function Sidebar() {
               )}
             </div>
 
-            {/* Menu Item Tambahan: Keterangan, Kelola Pura, Info Kita */}
+            {/* Menu Item Tambahan: Keterangan, Kelola Pura, Warta */}
             {secondaryNavItems.map((item) => {
               const Icon = item.icon;
               return (
@@ -268,10 +269,14 @@ export default function Sidebar() {
                   to={item.to}
                   onClick={closeMobile}
                   className={({ isActive }) => {
+                    // Cek status aktif untuk sub-rute Keterangan dan Warta
                     const isKeteranganActive =
                       item.to === '/keterangan' &&
                       location.pathname.startsWith('/keterangan');
-                    const isItemActive = isActive || isKeteranganActive;
+                    const isWartaActive =
+                      item.to === '/warta' &&
+                      location.pathname.startsWith('/warta');
+                    const isItemActive = isActive || isKeteranganActive || isWartaActive;
                     return `group relative flex items-center gap-3 px-3.5 min-h-11 rounded-xl text-sm font-medium border transition-colors duration-150 outline-none focus:outline-none [touch-action:manipulation] ${
                       isItemActive
                         ? 'bg-teal-50 text-teal-800 font-semibold border-teal-200/60 shadow-2xs'

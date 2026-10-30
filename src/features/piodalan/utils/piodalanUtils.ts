@@ -180,19 +180,30 @@ export function createDateBadge(
 
 /**
  * getPuraTypeBadgeStyle menentukan gaya pill badge kategori pura sesuai AGENTS.md:
- * - Kawitan: Mint Teal (bg-[#e6f7f5] text-[#0f766e] border border-teal-200/60)
- * - Swagina: Emerald Green (bg-[#f0fdf4] text-[#15803d] border border-emerald-200/60)
- * - Kahyangan Jagat / Kahyangan Tiga / Lainnya: Violet Purple (bg-[#ede9fe] text-[#6d28d9] border border-violet-200/60)
+ * - Kahyangan Jagat: Teal Tirta Bali (bg-teal-50 text-teal-800 border border-teal-200/70)
+ * - Kahyangan Tiga: Emerald Green (bg-emerald-50 text-emerald-800 border border-emerald-200/70)
+ * - Kawitan: Violet Purple (bg-[#ede9fe] text-[#6d28d9] border border-violet-200/60)
+ * - Swagina: Sky Blue (bg-sky-50 text-sky-800 border border-sky-200/70)
+ * - Suka Duka: Amber Gold (bg-amber-50 text-amber-800 border border-amber-200/70)
  */
 export function getPuraTypeBadgeStyle(puraType?: string): string {
   const clean = (puraType || '').toLowerCase().trim();
+  if (clean.includes('kahyangan jagat') || clean.includes('sad kahyangan') || clean.includes('dang kahyangan')) {
+    return 'bg-teal-50 text-teal-800 border border-teal-200/70';
+  }
+  if (clean.includes('kahyangan tiga')) {
+    return 'bg-emerald-50 text-emerald-800 border border-emerald-200/70';
+  }
   if (clean.includes('kawitan') || clean.includes('paibon') || clean.includes('dadia')) {
-    return 'bg-[#e6f7f5] text-[#0f766e] border border-teal-200/60';
+    return 'bg-violet-50 text-violet-800 border border-violet-200/70';
   }
   if (clean.includes('swagina') || clean.includes('subak') || clean.includes('pasar') || clean.includes('segara')) {
-    return 'bg-[#f0fdf4] text-[#15803d] border border-emerald-200/60';
+    return 'bg-sky-50 text-sky-800 border border-sky-200/70';
   }
-  // Default untuk Kahyangan Jagat, Kahyangan Tiga, Dang Kahyangan, Sad Kahyangan
-  return 'bg-[#ede9fe] text-[#6d28d9] border border-violet-200/60';
+  if (clean.includes('suka duka')) {
+    return 'bg-amber-50 text-amber-800 border border-amber-200/70';
+  }
+  // Default untuk tipe umum
+  return 'bg-teal-50 text-teal-800 border border-teal-200/70';
 }
 

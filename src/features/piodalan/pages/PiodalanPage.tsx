@@ -5,18 +5,18 @@ import type {
   PiodalanFilterParams,
   PiodalanSearchTab,
   PiodalanScheduleItem,
-  PiodalanModalActiveSection,
+  PiodalanDayGroup,
 } from '../types/piodalan.types';
 import {
   usePiodalanSearch,
   useUpcomingPiodalan,
 } from '../hooks/usePiodalan';
-import { getTodayWITA } from '../utils/piodalanUtils';
+import { getTodayWITA, INDO_MONTHS_LONG } from '../utils/piodalanUtils';
 import { PiodalanSearchForm } from '../components/PiodalanSearchForm';
 import { PiodalanResultList } from '../components/PiodalanResultList';
 import { PiodalanSidebarWidgets } from '../components/PiodalanSidebarWidgets';
 import { PiodalanDetailModal } from '../components/PiodalanDetailModal';
-import { PiodalanGuideModal } from '../components/PiodalanGuideModal';
+import { PiodalanPuraListModal } from '../components/PiodalanPuraListModal';
 
 /**
  * ==============================================================================
@@ -78,7 +78,8 @@ export const PiodalanPage: React.FC = () => {
     const saptawara = searchParams.get('saptawara') || '';
     const pancawara = searchParams.get('pancawara') || '';
     const wuku = searchParams.get('wuku') || '';
-    const tahun = searchParams.get('tahun') || '';
+    // Tahun selalu default ke tahun berjalan WITA (contoh: 2026) agar form valid saat submit
+    const tahun = searchParams.get('tahun') || String(currentYear);
     const bulanParam = searchParams.get('bulan');
     const bulan = bulanParam ? parseInt(bulanParam, 10) : '';
     const namaPura = searchParams.get('nama_pura') || searchParams.get('q') || '';
@@ -94,8 +95,11 @@ export const PiodalanPage: React.FC = () => {
     };
   });
 
-  // Sinkronkan formInputs jika URL searchParams berubah dari navigasi luar (Back/Forward)
-  useEffect(() => {
+  // Sinkronkan formInputs jika URL searchParams berubah dari navigasi luar (pola resmi React tanpa cascading renders)
+  const searchParamString = searchParams.toString();
+  const [prevParamsString, setPrevParamsString] = useState(searchParamString);
+  if (prevParamsString !== searchParamString) {
+    setPrevParamsString(searchParamString);
     if (hasSearched) {
       const rawTab = searchParams.get('tab') as PiodalanSearchTab | null;
       const tab: PiodalanSearchTab =
@@ -106,12 +110,12 @@ export const PiodalanPage: React.FC = () => {
         saptawara: searchParams.get('saptawara') || '',
         pancawara: searchParams.get('pancawara') || '',
         wuku: searchParams.get('wuku') || '',
-        tahun: searchParams.get('tahun') || '',
+        tahun: searchParams.get('tahun') || String(currentYear),
         bulan: searchParams.get('bulan') || '',
         namaPura: searchParams.get('nama_pura') || searchParams.get('q') || '',
       });
     }
-  }, [searchParams, hasSearched]);
+  }
 
   // ----------------------------------------------------------------------------
   // 3. PARAMETER PENCARIAN AKTIF YANG DIKIRIM KE HOOK BACKEND
@@ -139,6 +143,7 @@ export const PiodalanPage: React.FC = () => {
   // 4. QUERY BACKEND GO: HANYA BERJALAN JIKA SUDAH MELAKUKAN SEARCH
   // ----------------------------------------------------------------------------
   const {
+    dayGroups,
     scheduleList,
     totalCount,
     isLoading,
@@ -153,17 +158,18 @@ export const PiodalanPage: React.FC = () => {
   // ----------------------------------------------------------------------------
   // 5. STATE KONTROL MODAL DIALOG POP-UP
   // ----------------------------------------------------------------------------
-  const [detailModalState, setDetailModalState] = useState<{
+  // State untuk modal pop-up hierarkis: Level 2 (List Pura) & Level 3 (Detail Pura & Susunan Acara)
+  const [puraListModalGroup, setPuraListModalGroup] = useState<PiodalanDayGroup | null>(null);
+  const [selectedPuraIdForModal, setSelectedPuraIdForModal] = useState<number | null>(null);
+
+  // State untuk modal pop-up rincian 15 dimensi Wariga Bali (Detail Tanggal)
+  const [warigaModalState, setWarigaModalState] = useState<{
     isOpen: boolean;
     schedule: PiodalanScheduleItem | null;
-    activeSection: PiodalanModalActiveSection;
   }>({
     isOpen: false,
     schedule: null,
-    activeSection: 'pura',
   });
-
-  const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
 
   // ----------------------------------------------------------------------------
   // 6. HANDLER AKSI PENGGUNA
@@ -175,15 +181,21 @@ export const PiodalanPage: React.FC = () => {
 
   // Eksekusi pencarian saat tombol 'Cari piodalan' ditekan
   const handleSearchSubmit = () => {
+    // Pastikan tahun target selalu valid (fallback aman ke tahun saat ini WITA)
+    const targetTahun = formInputs.tahun ? String(formInputs.tahun).trim() : String(currentYear);
+
     if (formInputs.tab === 'wewaran') {
-      if (!formInputs.saptawara || !formInputs.pancawara || !formInputs.wuku || !formInputs.tahun) {
+      // Validasi kelengkapan kombinasi Pawukon (Saptawara + Pancawara + Wuku)
+      if (!formInputs.saptawara || !formInputs.pancawara || !formInputs.wuku) {
         return;
       }
     } else if (formInputs.tab === 'bulan') {
-      if (!formInputs.bulan || !formInputs.tahun) {
+      // Validasi pemilihan bulan Masehi (1 - 12)
+      if (!formInputs.bulan) {
         return;
       }
     } else if (formInputs.tab === 'pura') {
+      // Validasi pemilihan nama pura
       if (!formInputs.namaPura || !formInputs.namaPura.trim()) {
         return;
       }
@@ -191,7 +203,7 @@ export const PiodalanPage: React.FC = () => {
 
     const newParams = new URLSearchParams();
     newParams.set('tab', formInputs.tab);
-    newParams.set('tahun', String(formInputs.tahun));
+    newParams.set('tahun', targetTahun);
     newParams.set('searched', 'true');
 
     if (formInputs.tab === 'wewaran') {
@@ -202,6 +214,11 @@ export const PiodalanPage: React.FC = () => {
       newParams.set('bulan', String(formInputs.bulan));
     } else if (formInputs.tab === 'pura') {
       newParams.set('nama_pura', (formInputs.namaPura || '').trim());
+    }
+
+    // Perbarui state lokal jika sebelumnya tahun belum terisi
+    if (!formInputs.tahun) {
+      setFormInputs((prev) => ({ ...prev, tahun: targetTahun }));
     }
 
     setSearchParams(newParams, { replace: true });
@@ -216,34 +233,87 @@ export const PiodalanPage: React.FC = () => {
       saptawara: '',
       pancawara: '',
       wuku: '',
-      tahun: '',
+      tahun: String(currentYear),
       bulan: '',
       namaPura: '',
     });
   };
 
-  // Fokus kembali ke form pencarian saat tombol 'Ubah' pada Widget 2 diklik
-  const handleFocusSearchForm = () => {
-    if (searchFormRef.current) {
-      searchFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+  // Buka rincian pura & susunan acara langsung (Level 3 - Gambar 2) dari widget Piodalan Terdekat
+  const handleOpenUpcomingDetail = (upcoming: PiodalanScheduleItem) => {
+    const existingGroup = dayGroups.find((d) => d.dateStr === upcoming.dateStr);
+    const targetGroup: PiodalanDayGroup = existingGroup || {
+      dateStr: upcoming.dateStr,
+      formattedDate: upcoming.formattedDate,
+      dayName: upcoming.dayName,
+      wewaran: upcoming.penanggalan,
+      totalPura: 1,
+      puras: [
+        {
+          id: upcoming.puraId,
+          name: upcoming.puraName,
+          type: upcoming.puraType,
+          city: upcoming.location,
+          province: 'BALI',
+          address: upcoming.fullAddress,
+          phone: upcoming.phone || null,
+          location_url: upcoming.mapUrl || null,
+          benchmark: 'Pawukon',
+          pelaksanaan_aktual: null,
+        },
+      ],
+    };
+    setPuraListModalGroup(targetGroup);
+    setSelectedPuraIdForModal(upcoming.puraId);
   };
 
-  // Buka modal detail 2 section
-  const handleOpenScheduleDetail = (
-    item: PiodalanScheduleItem,
-    initialSection: PiodalanModalActiveSection
-  ) => {
-    setDetailModalState({
+  // Buka rincian 15 dimensi Wariga (Detail Tanggal)
+  const handleOpenDayWariga = (dateStr: string) => {
+    const foundSchedule = scheduleList.find((s) => s.dateStr === dateStr);
+    const matchedDayGroup = dayGroups.find((d) => d.dateStr === dateStr);
+
+    const scheduleForWariga: PiodalanScheduleItem = foundSchedule || {
+      id: `wariga-${dateStr}`,
+      dateStr,
+      formattedDate: matchedDayGroup?.formattedDate || dateStr,
+      dayName: matchedDayGroup?.dayName || 'Hari',
+      dateBadge: {
+        day: dateStr.split('-')[2] || '01',
+        month: 'BALI',
+        colorVariant: 'teal',
+      },
+      puraName: 'Wariga Kalender Bali',
+      puraId: 0,
+      location: 'Bali, Indonesia',
+      fullAddress: 'Bali, Indonesia',
+      puraType: 'Kahyangan Jagat',
+      penanggalan: matchedDayGroup?.wewaran || 'Pawukon 210 hari',
+      cycleInfo: 'Pawukon 210 hari',
+      timeString: null,
+    };
+
+    setWarigaModalState({
       isOpen: true,
-      schedule: item,
-      activeSection: initialSection,
+      schedule: scheduleForWariga,
     });
   };
 
-  const handleCloseDetailModal = () => {
-    setDetailModalState((prev) => ({ ...prev, isOpen: false }));
-  };
+  // Judul dinamis hasil pencarian piodalan (sesuai gambar referensi: "Data Piodalan Bulan ...")
+  const resultTitle = useMemo(() => {
+    if (!activeFilter) return 'Hasil Pencarian Piodalan';
+    if (activeFilter.tab === 'bulan' && activeFilter.bulan) {
+      const monthIdx = Number(activeFilter.bulan) - 1;
+      const monthName = INDO_MONTHS_LONG[monthIdx] || '';
+      return `Data Piodalan Bulan ${monthName} ${activeFilter.tahun || ''}`.trim();
+    }
+    if (activeFilter.tab === 'wewaran') {
+      return `Data Piodalan ${activeFilter.saptawara || ''} ${activeFilter.pancawara || ''} ${activeFilter.wuku || ''} ${activeFilter.tahun || ''}`.trim();
+    }
+    if (activeFilter.tab === 'pura') {
+      return `Data Piodalan "${activeFilter.namaPura || ''}" (${activeFilter.tahun || ''})`;
+    }
+    return 'Hasil Pencarian Piodalan';
+  }, [activeFilter]);
 
   // ----------------------------------------------------------------------------
   // 7. JUDUL TAB BROWSER DINAMIS (DYNAMIC DOCUMENT TITLE)
@@ -344,49 +414,56 @@ export const PiodalanPage: React.FC = () => {
       {/* ==================================================================== */}
       {hasSearched && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start animate-in fade-in duration-200">
-          {/* Kolom Kiri (~2/3 Lebar: lg:col-span-8) - Tabel Hasil Piodalan */}
+          {/* Kolom Kiri (~2/3 Lebar: lg:col-span-8) - Kartu Piodalan Utama (Level 1) */}
           <div className="lg:col-span-8 space-y-6">
             <PiodalanResultList
-              scheduleList={scheduleList}
+              dayGroups={dayGroups}
               totalCount={totalCount}
               isLoading={isLoading}
-              onOpenScheduleDetail={handleOpenScheduleDetail}
+              onOpenPuraList={(group) => {
+                setPuraListModalGroup(group);
+                setSelectedPuraIdForModal(null);
+              }}
+              onOpenDayWariga={handleOpenDayWariga}
               onResetFilter={handleResetFilter}
+              resultTitle={resultTitle}
             />
           </div>
 
-          {/* Kolom Kanan (~1/3 Lebar: lg:col-span-4) - 3 Widget Sidebar */}
+          {/* Kolom Kanan (~1/3 Lebar: lg:col-span-4) - Widget Piodalan Terdekat */}
           <div className="lg:col-span-4 space-y-6">
             <PiodalanSidebarWidgets
               upcomingPiodalan={upcomingPiodalan}
-              filter={activeFilter || formInputs}
-              totalCount={totalCount}
-              onOpenScheduleDetail={handleOpenScheduleDetail}
-              onFocusSearchForm={handleFocusSearchForm}
-              onOpenGuideModal={() => setIsGuideModalOpen(true)}
+              onOpenUpcomingDetail={handleOpenUpcomingDetail}
             />
           </div>
         </div>
       )}
 
       {/* ==================================================================== */}
-      {/* 5. MODAL DIALOG POP-UP TERPADU 2 SECTION                             */}
-      {/* Section 1: Detail Wariga (Gambar 1 & 2)                              */}
-      {/* Section 2: Detail Pura & Rangkaian Acara Kontributor                  */}
+      {/* 5. MODAL HIERARKIS 3-LEVEL: LIST PURA & DETAIL ACARA PURA            */}
+      {/* Level 2: Daftar Pura yang Melaksanakan Piodalan                      */}
+      {/* Level 3: Rincian Piodalan Pura & Susunan Rangkaian Acara Kontributor */}
       {/* ==================================================================== */}
-      <PiodalanDetailModal
-        isOpen={detailModalState.isOpen}
-        onClose={handleCloseDetailModal}
-        schedule={detailModalState.schedule}
-        initialSection={detailModalState.activeSection}
+      <PiodalanPuraListModal
+        isOpen={Boolean(puraListModalGroup)}
+        onClose={() => {
+          setPuraListModalGroup(null);
+          setSelectedPuraIdForModal(null);
+        }}
+        dayGroup={puraListModalGroup}
+        initialSelectedPuraId={selectedPuraIdForModal}
+        onOpenDayWariga={handleOpenDayWariga}
       />
 
       {/* ==================================================================== */}
-      {/* 6. MODAL DIALOG PEDOMAN PENANGGALAN BUDAYA                           */}
+      {/* 6. MODAL DIALOG POP-UP: DETAIL WARIGA LENGKAP (15 DIMENSI)           */}
+      {/* Sesuai Permintaan Pengguna: Khusus rincian wariga penanggalan saja  */}
       {/* ==================================================================== */}
-      <PiodalanGuideModal
-        isOpen={isGuideModalOpen}
-        onClose={() => setIsGuideModalOpen(false)}
+      <PiodalanDetailModal
+        isOpen={warigaModalState.isOpen}
+        onClose={() => setWarigaModalState((prev) => ({ ...prev, isOpen: false }))}
+        schedule={warigaModalState.schedule}
       />
     </div>
   );

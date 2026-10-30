@@ -2,15 +2,14 @@ import type { DewasaAyuItem, PiodalanItem, PiodalanTerdekatItem } from '../types
 
 /**
  * ============================================================================
- * DATA DUMMY SEMENTARA: PIODALAN PURA & DEWASA AYU
+ * DATA SEMENTARA: DEWASA AYU & ARSIP DUMMY PIODALAN (TERDEPREKASI)
  * ============================================================================
- * Berkas ini mengisolasi data sementara (*mock data*) khusus untuk 2 fitur
- * yang modul backend-nya belum selesai dibangun (Piodalan Pura & Dewasa Ayu).
- *
- * Desain Bersih:
- * Ketika modul backend Go untuk pura dan dewasa ayu dirilis di masa depan,
- * kita HANYA perlu mengganti fungsi pembacaan di berkas ini atau mengarahkannya
- * ke custom hook TanStack Query tanpa perlu merombak satu baris pun komponen UI!
+ * CATATAN STATUS INTEGRASI PIODALAN:
+ * Seluruh fitur Piodalan di semua halaman (PiodalanPage, KelolaPuraPage,
+ * CalendarPage, CalendarInspector, CalendarHero, CalendarBottomSection,
+ * dan DashboardPage) kini TELAH 100% TERHUBUNG KE DATA RIIL BACKEND GO
+ * melalui useDayPiodalan, useMonthlyPiodalan, dan searchPiodalan.
+ * Konstanta dummy piodalan di bawah ini sudah TIDAK LAGI DIKONSUMSI oleh UI mana pun.
  * ============================================================================
  */
 
@@ -42,7 +41,7 @@ export const DUMMY_TODAY_PIODALAN: PiodalanItem[] = [
  * Mengambil daftar piodalan hari ini berdasarkan tanggal.
  * (Saat ini mengembalikan data dummy realistis yang serasi dengan desain mockup).
  */
-export function getPiodalanForDate(_dateString: string): { items: PiodalanItem[]; totalCount: number } {
+export function getPiodalanForDate(): { items: PiodalanItem[]; totalCount: number } {
   return {
     items: DUMMY_TODAY_PIODALAN,
     totalCount: DUMMY_TODAY_PIODALAN.length,

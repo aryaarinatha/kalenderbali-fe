@@ -143,6 +143,7 @@ export interface PiodalanTerdekatItem {
   dayNumber: string; // "05", "10", "30"
   wukuTitle: string; // "Saniscara Kliwon Uye"
   puraCountText: string; // "3 pura"
+  dateStr?: string; // "YYYY-MM-DD" untuk navigasi langsung ke tanggal kalender
 }
 
 /**

@@ -362,7 +362,7 @@ export const PiodalanSearchForm: React.FC<PiodalanSearchFormProps> = ({
         {filter.tab === 'pura' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-4 items-end">
             {/* Searchable Combobox Pura (Select2 Style Sesuai Gambar Referensi Pengguna) */}
-            <div className="lg:col-span-9">
+            <div className="lg:col-span-6">
               <label
                 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1.5"
               >
@@ -372,6 +372,27 @@ export const PiodalanSearchForm: React.FC<PiodalanSearchFormProps> = ({
                 value={filter.namaPura || ''}
                 onChange={(val) => onFilterChange({ namaPura: val })}
                 placeholder="-- Pilih Nama Pura --"
+              />
+            </div>
+
+            {/* Input Tahun Masehi (Ketik Manual) */}
+            <div className="lg:col-span-3">
+              <label
+                htmlFor="select-tahun-pura"
+                className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1.5"
+              >
+                Tahun
+              </label>
+              <input
+                id="select-tahun-pura"
+                type="number"
+                min={1900}
+                max={2100}
+                value={filter.tahun ?? ''}
+                onChange={(e) => onFilterChange({ tahun: e.target.value })}
+                placeholder="Contoh: 2026"
+                required
+                className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-[#0f172a] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0d9488]/20 focus:border-[#0d9488] transition-all tabular-nums"
               />
             </div>
 

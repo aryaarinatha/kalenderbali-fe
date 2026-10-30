@@ -12,6 +12,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { usePiodalanSubmissions } from '../hooks/useKelolaPura';
+import { getTodayWITA } from '../utils/kelolaPuraUtils';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useAlertStore } from '@/stores/useAlertStore';
 
@@ -55,10 +56,10 @@ export const AcaraSubmissionModal: React.FC<AcaraSubmissionModalProps> = ({
   const { showAlert } = useAlertStore();
   const { addAcaraSubmission } = usePiodalanSubmissions(puraId);
 
-  // State Formulir
+  // State Formulir (Tanggal diinisialisasi ke tanggal piodalan atau hari ini zona WITA)
   const [name, setName] = useState<string>('');
-  const [eventDate, setEventDate] = useState<string>(
-    piodalanDate ? piodalanDate.slice(0, 10) : new Date().toISOString().slice(0, 10)
+  const [eventDate, setEventDate] = useState<string>(() =>
+    piodalanDate ? piodalanDate.slice(0, 10) : getTodayWITA()
   );
   const [eventTime, setEventTime] = useState<string>('09:00');
   const [levelId, setLevelId] = useState<number | ''>(2);
@@ -67,12 +68,12 @@ export const AcaraSubmissionModal: React.FC<AcaraSubmissionModalProps> = ({
   const [reason, setReason] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Sinkronisasi piodalanDate jika berubah dari luar
+  // Sinkronisasi piodalanDate jika berubah dari luar (pola resmi React tanpa cascading renders)
   const [prevDate, setPrevDate] = useState<string | undefined>(piodalanDate);
   if (prevDate !== piodalanDate) {
     setPrevDate(piodalanDate);
     setEventDate(
-      piodalanDate ? piodalanDate.slice(0, 10) : new Date().toISOString().slice(0, 10)
+      piodalanDate ? piodalanDate.slice(0, 10) : getTodayWITA()
     );
   }
 

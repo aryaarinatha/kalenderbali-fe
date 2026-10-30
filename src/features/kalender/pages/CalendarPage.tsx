@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { AlertCircle, RefreshCw } from 'lucide-react';
-import { useKalenderTahun } from '../hooks/useKalender';
+import { useKalenderTahun, useMonthlyPiodalan } from '../hooks/useKalender';
 import {
   exportHariRayaToICS,
   generateMonthGrid,
@@ -65,6 +65,7 @@ export default function CalendarPage() {
   // 2. KONSUMSI DATA 1 TAHUN VIA TANSTACK QUERY (ZERO-LOADING)
   // -------------------------------------------------------------------------
   const {
+    kalenderData,
     daysMap,
     isLoading,
     isError,
@@ -86,6 +87,15 @@ export default function CalendarPage() {
   const currentMonthHolidays = useMemo(
     () => getMonthHolidays(activeMonth),
     [getMonthHolidays, activeMonth]
+  );
+
+  // Ambil ringkasan piodalan bulan aktif secara instan & tangguh (Hybrid Resilient Engine)
+  const { data: monthlyPiodalan } = useMonthlyPiodalan(
+    activeYear,
+    activeMonth,
+    currentMonthDays,
+    todayWITA,
+    kalenderData
   );
 
   // -------------------------------------------------------------------------
@@ -215,6 +225,7 @@ export default function CalendarPage() {
         sakaYearText={sakaYearText}
         monthlyHolidays={currentMonthHolidays}
         todayDateString={todayWITA}
+        monthlyPiodalanCount={monthlyPiodalan?.totalPuras}
         isLoading={isLoading}
       />
 
@@ -252,6 +263,10 @@ export default function CalendarPage() {
         monthlyHolidays={currentMonthHolidays}
         onSelectDate={handleSelectDate}
         onNavigateToFullHoliday={handleNavigateToFullHoliday}
+        monthlyPiodalans={monthlyPiodalan?.upcomingItems}
+        monthlyPiodalanTotal={monthlyPiodalan?.totalPuras}
+        activeYear={activeYear}
+        activeMonth={activeMonth}
       />
 
       {/* ========================================================= */}

@@ -7,16 +7,20 @@ import type {
   PiodalanScheduleItem,
   PuraPiodalanRecord,
   PiodalanAcaraItem,
+  PiodalanSearchParams,
+  BackendPiodalanSearchResult,
+  PiodalanDayGroup,
+  PiodalanDayPuraItem,
 } from '../types/piodalan.types';
 import {
   fetchPuraList,
   fetchPuraDetail,
   fetchMasterDropdown,
-  fetchPiodalanDates,
   fetchDayWariga,
   fetchPuraPiodalans,
   fetchPiodalanAcaras,
   fetchWarigaElementExplanation,
+  searchPiodalan,
 } from '../api/piodalanApi';
 import {
   getTodayWITA,
@@ -24,7 +28,8 @@ import {
   getIndoDayName,
   createDateBadge,
 } from '../utils/piodalanUtils';
-import { useKalenderTahun } from '@/features/kalender/hooks/useKalender';
+import { fetchKalenderTahun } from '@/features/kalender/api/kalenderApi';
+import { matchPurasForDay, normalizeCalendarString } from '@/features/kalender/utils/calendarUtils';
 
 /**
  * ==============================================================================
@@ -81,370 +86,534 @@ export function useMasterDropdown(typeCode: 'saptawara' | 'pancawara' | 'wuku' |
 }
 
 // ==============================================================================
-// 3. HOOK SELECTOR UTAMA PENCARIAN PIODALAN (COMPOSITE SELECTOR)
+// 3. HOOK SELECTOR UTAMA PENCARIAN PIODALAN (BACKEND GO INTEGRATION)
 // ==============================================================================
 
 /**
- * usePiodalanSearch mengorkestrasi pencarian piodalan berdasarkan filter aktif:
- * - Mengambil tanggal Masehi dari kalkulasi backend Go (GET /search/otonan)
- * - Mencocokkan 461 pura dari memori RAM (0ms latency)
- * - Menyusun daftar kartu jadwal siap render dengan badge tanggal visual
+ * usePiodalanSearch mengorkestrasi pemanggilan mesin pencarian piodalan backend Go:
+ * GET /api/v1/search/piodalan
  *
- * @param filter Parameter pencarian aktif (tab, saptawara, pancawara, wuku, tahun, dll)
+ * Menggantikan kalkulasi manual dan loop join berat di sisi browser.
+ * Seluruh komputasi kalender Pawukon 210 hari, penanggalan Sasih candra, dan
+ * pencocokan relasi pura dijalankan secara instan oleh server backend Go.
+ *
+ * @param filter Parameter pencarian aktif (tab, saptawara, pancawara, wuku, tahun, bulan, namaPura)
+ * @param enabled Flag pengaktif kueri (hanya dijalankan saat pengguna menekan tombol cari)
  */
 export function usePiodalanSearch(
   filter: PiodalanFilterParams | null,
   enabled: boolean = true
 ) {
-  // 1. Ambil seluruh data pura dari cache
+  // Ambil data cache master seluruh 461 pura dari database resmi PostgreSQL
   const { data: puras = [], isLoading: isPurasLoading } = useAllPuras();
 
-  // 2. Ambil master dropdown untuk memetakan nama ke ID backend
-  const { data: saptawaraOpts = [] } = useMasterDropdown('saptawara');
-  const { data: pancawaraOpts = [] } = useMasterDropdown('pancawara');
-  const { data: wukuOpts = [] } = useMasterDropdown('wuku');
-
-  // Cari ID database dari nama elemen yang dipilih di form
-  const selectedSaptawaraId = useMemo(() => {
-    if (!filter || !filter.saptawara) return undefined;
-    return saptawaraOpts.find(
-      (opt) => opt.name.toLowerCase() === filter.saptawara.toLowerCase()
-    )?.id;
-  }, [saptawaraOpts, filter?.saptawara]);
-
-  const selectedPancawaraId = useMemo(() => {
-    if (!filter || !filter.pancawara) return undefined;
-    return pancawaraOpts.find(
-      (opt) => opt.name.toLowerCase() === filter.pancawara.toLowerCase()
-    )?.id;
-  }, [pancawaraOpts, filter?.pancawara]);
-
-  const selectedWukuId = useMemo(() => {
-    if (!filter || !filter.wuku) return undefined;
-    return wukuOpts.find(
-      (opt) => opt.name.toLowerCase() === filter.wuku.toLowerCase()
-    )?.id;
-  }, [wukuOpts, filter?.wuku]);
-
-  // Syarat eksekusi kalkulasi tanggal Masehi dari backend Go
-  const canFetchDates = Boolean(
-    enabled &&
-      filter &&
-      filter.tab === 'wewaran' &&
-      selectedSaptawaraId &&
-      selectedPancawaraId &&
-      selectedWukuId &&
-      filter.tahun
-  );
-
-  // 3. Tarik data kalender tahun Masehi aktif jika pencarian membutuhkan kalender (Bulan / Nama Pura)
+  // Tahun target pencarian (default tahun berjalan)
   const targetYear = filter?.tahun ? Number(filter.tahun) : new Date().getFullYear();
-  const targetMonth = filter?.bulan ? Number(filter.bulan) : undefined;
-  const isKalenderNeeded = Boolean(
-    enabled && filter && (filter.tab === 'bulan' || filter.tab === 'pura')
-  );
 
-  const { kalenderData = [], isLoading: isKalenderLoading } = useKalenderTahun(
-    targetYear,
-    targetMonth
-  );
+  // Ambil data kalender 365 hari tahun target untuk mesin komputasi pencocokan hybrid deterministik
+  const { data: kalenderData = [], isLoading: isKalenderLoading } = useQuery({
+    queryKey: ['kalender', targetYear],
+    queryFn: () => fetchKalenderTahun(targetYear),
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 60 * 24,
+    refetchOnWindowFocus: false,
+    enabled: enabled && Boolean(filter),
+  });
 
-  // 4. Panggil API backend Go untuk menghitung tanggal Masehi di tahun target (khusus Tab Wewaran)
+  // Buat indeks pemetaan instan (Map O(1)) berdasarkan ID pura untuk pengayaan profil kartu
+  const purasMap = useMemo(() => {
+    const map = new Map<number, PuraBackendItem>();
+    if (Array.isArray(puras)) {
+      for (const p of puras) {
+        map.set(p.id, p);
+      }
+    }
+    return map;
+  }, [puras]);
+
+  // 1. Ekstraksi dan sanitasi parameter pencarian untuk dikirim ke backend Go
+  const searchParams: PiodalanSearchParams | null = useMemo(() => {
+    if (!enabled || !filter) return null;
+
+    const tahun = filter.tahun ? Number(filter.tahun) : targetYear;
+
+    // Mode Wewaran (Siklus Pawukon 210 hari)
+    if (filter.tab === 'wewaran') {
+      if (!filter.wuku || !filter.saptawara || !filter.pancawara) return null;
+      return {
+        mode: 'wewaran',
+        saptawara: filter.saptawara.trim(),
+        pancawara: filter.pancawara.trim(),
+        wuku: filter.wuku.trim(),
+        tahun,
+      };
+    }
+
+    // Mode Bulan (Pencarian piodalan dalam 1 bulan Masehi penuh)
+    if (filter.tab === 'bulan') {
+      if (!filter.bulan) return null;
+      return {
+        mode: 'bulan',
+        bulan: Number(filter.bulan),
+        tahun,
+      };
+    }
+
+    // Mode Pura (Pencarian berbasis kata kunci nama pura atau ID)
+    if (filter.tab === 'pura') {
+      const q = (filter.namaPura || '').trim();
+      if (!q) return null;
+
+      // Temukan pura di cache master puras untuk menyertakan pura_id resmi ke backend
+      const matchedPura = puras.find(
+        (p) =>
+          p.name.toLowerCase() === q.toLowerCase() ||
+          p.name.toLowerCase().includes(q.toLowerCase()) ||
+          q.toLowerCase().includes(p.name.toLowerCase())
+      );
+
+      return {
+        mode: 'pura',
+        q,
+        pura_id: matchedPura?.id,
+        tahun,
+      };
+    }
+
+    return null;
+  }, [enabled, filter, targetYear, puras]);
+
+  // 2. Pemanggilan API backend Go secara asinkron menggunakan TanStack Query
   const {
-    data: targetDates = [],
-    isLoading: isDatesLoading,
-    isError: isDatesError,
-    error: datesError,
+    data: searchResult,
+    isLoading: isSearchLoading,
+    isError: isSearchError,
+    error: searchError,
     refetch,
-  } = useQuery<string[]>({
-    queryKey: [
-      'piodalan',
-      'dates',
-      selectedSaptawaraId,
-      selectedPancawaraId,
-      selectedWukuId,
-      filter?.tahun,
-    ],
-    queryFn: () =>
-      fetchPiodalanDates(
-        selectedSaptawaraId!,
-        selectedPancawaraId!,
-        selectedWukuId!,
-        Number(filter!.tahun)
-      ),
-    enabled: canFetchDates,
-    staleTime: 1000 * 60 * 60 * 12, // 12 jam
+  } = useQuery<BackendPiodalanSearchResult | null>({
+    queryKey: ['piodalan', 'search', searchParams],
+    queryFn: () => (searchParams ? searchPiodalan(searchParams) : null),
+    enabled: Boolean(searchParams),
+    staleTime: 1000 * 60 * 30, // 30 menit di cache memori browser
+    gcTime: 1000 * 60 * 60,
     refetchOnWindowFocus: false,
   });
 
-  // 5. Selector memori: Rakit PiodalanScheduleItem[] berdasarkan Tab yang aktif
-  const scheduleList: PiodalanScheduleItem[] = useMemo(() => {
-    if (!enabled || !filter || !Array.isArray(puras) || puras.length === 0) {
-      return [];
-    }
-
-    const normSasih = (s?: string | null): string => {
-      if (!s) return '';
-      const lower = s.toLowerCase().trim();
-      if (lower === 'kedasa') return 'kadasa';
-      if (lower === 'kenam') return 'kanem';
-      return lower;
-    };
-
-    const capFirst = (text?: string | null): string => {
-      if (!text) return '';
-      const trimmed = text.trim();
-      return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-    };
-
-    const items: PiodalanScheduleItem[] = [];
-
-    // --------------------------------------------------------------------------
-    // A. MODE WEWARAN & WUKU (PAWUKON 210 HARI)
-    // --------------------------------------------------------------------------
-    if (filter.tab === 'wewaran') {
-      if (!filter.wuku || !filter.saptawara || !filter.pancawara || !filter.tahun) {
-        return [];
-      }
-      const cleanWuku = filter.wuku.trim().toLowerCase();
-      const cleanSaptawara = filter.saptawara.trim().toLowerCase();
-      const cleanPancawara = filter.pancawara.trim().toLowerCase();
-
-      // Filter pura di memori yang memiliki observasi wewaran lengkap yang cocok
-      const matchingPuras = puras.filter((p) => {
-        const pWuku = p.wuku?.trim().toLowerCase();
-        const pSapta = p.saptawara?.trim().toLowerCase();
-        const pPanca = p.pancawara?.trim().toLowerCase();
-
-        return pWuku === cleanWuku && pSapta === cleanSaptawara && pPanca === cleanPancawara;
-      });
-
-      // Gunakan tanggal resmi dari backend Go
-      const datesToRender = targetDates.length > 0 ? targetDates : [];
-
+  // 3. Mapping data hasil backend Go dengan Fallback Hybrid Deterministik
+  // Menghasilkan hierarki 3-level: Piodalan Hari -> List Pura -> Detail Pura & Acara
+  const { dayGroups, scheduleList } = useMemo(() => {
+    // =========================================================================
+    // A. Prioritas 1: Konsumsi data terstruktur resmi dari server backend Go
+    // =========================================================================
+    if (
+      searchResult &&
+      Array.isArray(searchResult.schedules) &&
+      searchResult.schedules.length > 0
+    ) {
+      const groups: PiodalanDayGroup[] = [];
+      const flatItems: PiodalanScheduleItem[] = [];
       let itemCounter = 0;
-      for (const dateStr of datesToRender) {
-        for (const pura of matchingPuras) {
-          const locCity = pura.city || pura.address || 'Bali';
-          const locProvince = pura.province || 'Indonesia';
-          const shortLoc = pura.address ? `${pura.address}, ${locCity}` : locCity;
 
-          items.push({
-            id: `${dateStr}-${pura.id}`,
-            dateStr,
-            formattedDate: formatIndoDate(dateStr),
-            dayName: getIndoDayName(dateStr),
-            dateBadge: createDateBadge(dateStr, itemCounter),
-            puraName: pura.name,
-            puraId: pura.id,
+      for (const day of searchResult.schedules) {
+        const dayPuras: PiodalanDayPuraItem[] = [];
+
+        for (const pura of day.puras) {
+          const puraIdNum = parseInt(pura.id, 10) || 0;
+          const cachedPura = purasMap.get(puraIdNum);
+
+          const locCity = pura.kabupaten || cachedPura?.city || cachedPura?.address || 'Bali';
+          const locProvince = pura.provinsi || cachedPura?.province || 'Indonesia';
+          const shortLoc = pura.alamat ? `${pura.alamat}, ${locCity}` : locCity;
+          const fullLoc = pura.alamat
+            ? `${pura.alamat}, ${locCity}, ${locProvince}`
+            : `${locCity}, ${locProvince}`;
+
+          let timeStr: string | null = null;
+          let contactPhone: string | null = cachedPura?.phone || null;
+          if (pura.pelaksanaan_aktual?.acaras && pura.pelaksanaan_aktual.acaras.length > 0) {
+            const firstAcara = pura.pelaksanaan_aktual.acaras[0];
+            if (firstAcara.waktu) {
+              const parts = firstAcara.waktu.split(' ');
+              if (parts.length > 1) {
+                timeStr = `${parts[1].substring(0, 5)} WITA`;
+              }
+            }
+            if (firstAcara.pic_phone) {
+              contactPhone = firstAcara.pic_phone;
+            }
+          }
+
+          const penanggalanText = day.wewaran || day.sasih || 'Piodalan Pura';
+          const cycleText = day.wewaran ? 'Pawukon 210 hari' : day.sasih || 'Penanggalan Sasih';
+
+          // 1. Bentuk item pura untuk Level 2 (Daftar Pura pada hari ini)
+          dayPuras.push({
+            id: puraIdNum,
+            name: pura.nama,
+            type: pura.tipe || cachedPura?.type || 'Kahyangan Jagat',
+            address: pura.alamat || cachedPura?.address || '',
+            city: locCity,
+            province: locProvince,
+            phone: contactPhone,
+            location_url: cachedPura?.location_url || null,
+            latitude: pura.latitude ?? cachedPura?.latitude ?? null,
+            longitude: pura.longitude ?? cachedPura?.longitude ?? null,
+            benchmark: cachedPura?.benchmark || (day.wewaran ? 'Pawukon' : 'Sasih'),
+            wuku: cachedPura?.wuku || null,
+            saptawara: cachedPura?.saptawara || null,
+            pancawara: cachedPura?.pancawara || null,
+            sasih: cachedPura?.sasih || null,
+            purnama_tilem: cachedPura?.purnama_tilem || null,
+            pelaksanaan_aktual: pura.pelaksanaan_aktual || null,
+            rawPura: cachedPura || {
+              id: puraIdNum,
+              name: pura.nama,
+              type: pura.tipe,
+              status: 'active',
+              address: pura.alamat,
+              city: pura.kabupaten,
+              province: pura.provinsi,
+              phone: contactPhone,
+            },
+          });
+
+          // 2. Bentuk item flat untuk widget samping & backward-compatibility
+          flatItems.push({
+            id: `${day.tanggal}-${pura.id}`,
+            dateStr: day.tanggal,
+            formattedDate: formatIndoDate(day.tanggal),
+            dayName: getIndoDayName(day.tanggal),
+            dateBadge: createDateBadge(day.tanggal, itemCounter),
+            puraName: pura.nama,
+            puraId: puraIdNum,
             location: shortLoc,
-            fullAddress: pura.address || `${locCity}, ${locProvince}`,
-            puraType: pura.type || 'Kahyangan Jagat',
-            penanggalan: `${pura.saptawara || filter.saptawara} · ${pura.pancawara || filter.pancawara} · ${pura.wuku || filter.wuku}`,
-            cycleInfo: 'Pawukon 210 hari',
-            timeString: null,
-            mapUrl: pura.location_url,
-            phone: pura.phone,
-            rawPura: pura,
+            fullAddress: fullLoc,
+            puraType: pura.tipe || cachedPura?.type || 'Kahyangan Jagat',
+            penanggalan: penanggalanText,
+            cycleInfo: cycleText,
+            timeString: timeStr,
+            mapUrl: cachedPura?.location_url || null,
+            phone: contactPhone,
+            rawPura: cachedPura || {
+              id: puraIdNum,
+              name: pura.nama,
+              type: pura.tipe,
+              status: 'active',
+              address: pura.alamat,
+              city: pura.kabupaten,
+              province: pura.provinsi,
+              phone: contactPhone,
+            },
           });
           itemCounter++;
         }
+
+        // Simpan kelompok tanggal (Level 1)
+        groups.push({
+          dateStr: day.tanggal,
+          formattedDate: formatIndoDate(day.tanggal),
+          dayName: getIndoDayName(day.tanggal),
+          wewaran: day.wewaran || day.sasih || 'Piodalan Pura',
+          sasih: day.sasih,
+          hariRaya: day.hari_raya,
+          totalPura: dayPuras.length,
+          puras: dayPuras,
+        });
+      }
+
+      if (groups.length > 0) {
+        return { dayGroups: groups, scheduleList: flatItems };
       }
     }
 
-    // --------------------------------------------------------------------------
-    // B. MODE NAMA PURA (PENCARIAN NAMA BERBASIS PENANGGALAN PASTI & KALENDER RIIL)
-    // --------------------------------------------------------------------------
-    else if (filter.tab === 'pura') {
-      const query = (filter.namaPura || '').trim().toLowerCase();
-      if (!query || !Array.isArray(kalenderData) || kalenderData.length === 0) {
-        return [];
+    // =========================================================================
+    // B. Prioritas 2 (Hybrid Fallback Engine):
+    // Jika respon jaringan kosong atau masih loading, komputasi O(1) deterministik di browser
+    // =========================================================================
+    if (
+      !enabled ||
+      !filter ||
+      !Array.isArray(kalenderData) ||
+      kalenderData.length === 0 ||
+      !Array.isArray(puras) ||
+      puras.length === 0
+    ) {
+      return { dayGroups: [], scheduleList: [] };
+    }
+
+    const groups: PiodalanDayGroup[] = [];
+    const flatItems: PiodalanScheduleItem[] = [];
+    let counter = 0;
+
+    // SKENARIO 1: TAB WEWARAN & WUKU
+    if (filter.tab === 'wewaran') {
+      const targetSapta = normalizeCalendarString(filter.saptawara);
+      const targetPanca = normalizeCalendarString(filter.pancawara);
+      const targetWuku = normalizeCalendarString(filter.wuku);
+
+      if (!targetSapta || !targetPanca || !targetWuku) {
+        return { dayGroups: [], scheduleList: [] };
       }
 
-      // HANYA ambil pura yang memiliki penanggalan pasti (Pawukon lengkap atau Sasih lengkap)
-      // Pura tanpa aturan penanggalan yang pasti tidak ditampilkan agar tidak menyajikan tanggal palsu
-      const matchingPuras = puras.filter((p) => {
-        const hasValidPawukon = Boolean(p.wuku && p.saptawara && p.pancawara);
-        const hasValidSasih = Boolean(p.sasih && p.purnama_tilem);
-        if (!hasValidPawukon && !hasValidSasih) {
-          return false;
-        }
-
-        const nameMatch = p.name?.toLowerCase().includes(query);
-        const cityMatch = p.city?.toLowerCase().includes(query);
-        const addressMatch = p.address?.toLowerCase().includes(query);
-        return nameMatch || cityMatch || addressMatch;
+      const matchingDays = kalenderData.filter((d) => {
+        const dSapta = normalizeCalendarString(d.wewaran?.saptawara?.nama);
+        const dPanca = normalizeCalendarString(d.wewaran?.pancawara?.nama);
+        const dWuku = normalizeCalendarString(d.wewaran?.wuku?.nama);
+        return dSapta === targetSapta && dPanca === targetPanca && dWuku === targetWuku;
       });
 
-      let itemCounter = 0;
-      for (const pura of matchingPuras) {
-        const locCity = pura.city || pura.address || 'Bali';
-        const locProvince = pura.province || 'Indonesia';
-        const shortLoc = pura.address ? `${pura.address}, ${locCity}` : locCity;
+      for (const day of matchingDays) {
+        const celebratingPuras = matchPurasForDay(day, puras);
+        const dayPuras: PiodalanDayPuraItem[] = [];
 
-        const pWuku = pura.wuku?.trim().toLowerCase();
-        const pSapta = pura.saptawara?.trim().toLowerCase();
-        const pPanca = pura.pancawara?.trim().toLowerCase();
-        const pSasih = normSasih(pura.sasih);
-        const pPT = pura.purnama_tilem?.trim().toLowerCase();
+        for (const p of celebratingPuras) {
+          const locCity = p.city || p.address || 'Bali';
+          const locProvince = p.province || 'Indonesia';
+          const shortLoc = p.address ? `${p.address}, ${locCity}` : locCity;
+          const fullLoc = p.address ? `${p.address}, ${locCity}, ${locProvince}` : `${locCity}, ${locProvince}`;
+          const penanggalanText = `${day.wewaran?.saptawara?.nama || ''} ${day.wewaran?.pancawara?.nama || ''} ${day.wewaran?.wuku?.nama || ''}`.trim() || 'Pawukon 210 hari';
 
-        const isPawukon = Boolean(pWuku && pSapta && pPanca);
-        const isSasih = Boolean(pSasih && pPT);
+          dayPuras.push({
+            id: p.id,
+            name: p.name,
+            type: p.type || 'Kahyangan Jagat',
+            address: p.address || '',
+            city: locCity,
+            province: locProvince,
+            phone: p.phone || null,
+            location_url: p.location_url || null,
+            latitude: null,
+            longitude: null,
+            benchmark: p.benchmark || 'Pawukon',
+            wuku: p.wuku,
+            saptawara: p.saptawara,
+            pancawara: p.pancawara,
+            sasih: p.sasih,
+            purnama_tilem: p.purnama_tilem,
+            pelaksanaan_aktual: null,
+            rawPura: p,
+          });
 
-        // Cari tanggal-tanggal riil piodalan pura ini di dalam kalenderData tahun target
-        for (const day of kalenderData) {
-          const dWuku = day.wewaran?.wuku?.nama?.trim().toLowerCase();
-          const dSapta = day.wewaran?.saptawara?.nama?.trim().toLowerCase();
-          const dPanca = day.wewaran?.pancawara?.nama?.trim().toLowerCase();
-          const dSasih = normSasih(day.sasih?.nama_sasih);
-          const dPT = day.pengalantaka?.purnama_tilem?.trim().toLowerCase();
+          flatItems.push({
+            id: `${day.tanggal}-${p.id}`,
+            dateStr: day.tanggal,
+            formattedDate: formatIndoDate(day.tanggal),
+            dayName: getIndoDayName(day.tanggal),
+            dateBadge: createDateBadge(day.tanggal, counter),
+            puraName: p.name,
+            puraId: p.id,
+            location: shortLoc,
+            fullAddress: fullLoc,
+            puraType: p.type || 'Kahyangan Jagat',
+            penanggalan: penanggalanText,
+            cycleInfo: 'Pawukon 210 hari',
+            timeString: null,
+            mapUrl: p.location_url || null,
+            phone: p.phone || null,
+            rawPura: p,
+          });
+          counter++;
+        }
 
-          const isMatch = isPawukon
-            ? pWuku === dWuku && pSapta === dSapta && pPanca === dPanca
-            : isSasih && pSasih === dSasih && pPT === dPT;
-
-          if (isMatch) {
-            const dateStr = day.tanggal;
-            const penanggalanText = isPawukon
-              ? `${pura.saptawara} · ${pura.pancawara} · ${pura.wuku}`
-              : `${capFirst(pura.purnama_tilem)} ${capFirst(pura.sasih)}`;
-
-            const cycleText = isPawukon ? 'Pawukon 210 hari' : 'Penanggalan Sasih';
-
-            items.push({
-              id: `pura-${pura.id}-${dateStr}`,
-              dateStr,
-              formattedDate: formatIndoDate(dateStr),
-              dayName: getIndoDayName(dateStr),
-              dateBadge: createDateBadge(dateStr, itemCounter),
-              puraName: pura.name,
-              puraId: pura.id,
-              location: shortLoc,
-              fullAddress: pura.address || `${locCity}, ${locProvince}`,
-              puraType: pura.type || 'Kahyangan Jagat',
-              penanggalan: penanggalanText,
-              cycleInfo: cycleText,
-              timeString: null,
-              mapUrl: pura.location_url,
-              phone: pura.phone,
-              rawPura: pura,
-            });
-            itemCounter++;
-          }
+        if (dayPuras.length > 0) {
+          groups.push({
+            dateStr: day.tanggal,
+            formattedDate: formatIndoDate(day.tanggal),
+            dayName: getIndoDayName(day.tanggal),
+            wewaran: `${day.wewaran?.saptawara?.nama || ''} ${day.wewaran?.pancawara?.nama || ''} ${day.wewaran?.wuku?.nama || ''}`.trim() || 'Pawukon 210 hari',
+            sasih: day.sasih?.nama_sasih,
+            hariRaya: day.hari_raya?.[0]?.nama,
+            totalPura: dayPuras.length,
+            puras: dayPuras,
+          });
         }
       }
-
-      // Urutkan jadwal berdasarkan urutan tanggal terdekat
-      items.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
     }
 
-    // --------------------------------------------------------------------------
-    // C. MODE BULAN (PENYARINGAN PER BULAN MASEHI BERBASIS KALENDER RIIL)
-    // --------------------------------------------------------------------------
+    // SKENARIO 2: TAB BULAN
     else if (filter.tab === 'bulan') {
-      if (
-        !filter.bulan ||
-        !filter.tahun ||
-        !Array.isArray(kalenderData) ||
-        kalenderData.length === 0
-      ) {
-        return [];
+      const targetBulan = Number(filter.bulan);
+      if (!targetBulan || targetBulan < 1 || targetBulan > 12) {
+        return { dayGroups: [], scheduleList: [] };
       }
-      const targetMonth = Number(filter.bulan);
-      const todayYear = Number(filter.tahun);
 
-      // Ambil hari-hari yang termasuk dalam bulan yang dipilih
-      const monthPrefix = `${todayYear}-${String(targetMonth).padStart(2, '0')}-`;
-      const monthDays = kalenderData.filter((d) => d.tanggal.startsWith(monthPrefix));
+      const monthDays = kalenderData.filter((d) => {
+        const parts = d.tanggal.split('-');
+        return parts.length >= 2 && parseInt(parts[1], 10) === targetBulan;
+      });
 
-      let itemCounter = 0;
       for (const day of monthDays) {
-        const dateStr = day.tanggal;
-        const dWuku = day.wewaran?.wuku?.nama?.trim().toLowerCase();
-        const dSapta = day.wewaran?.saptawara?.nama?.trim().toLowerCase();
-        const dPanca = day.wewaran?.pancawara?.nama?.trim().toLowerCase();
-        const dSasih = normSasih(day.sasih?.nama_sasih);
-        const dPT = day.pengalantaka?.purnama_tilem?.trim().toLowerCase();
+        const celebratingPuras = matchPurasForDay(day, puras);
+        if (celebratingPuras.length === 0) continue;
 
-        for (const pura of puras) {
-          const pWuku = pura.wuku?.trim().toLowerCase();
-          const pSapta = pura.saptawara?.trim().toLowerCase();
-          const pPanca = pura.pancawara?.trim().toLowerCase();
-          const pSasih = normSasih(pura.sasih);
-          const pPT = pura.purnama_tilem?.trim().toLowerCase();
+        const dayPuras: PiodalanDayPuraItem[] = [];
+        for (const p of celebratingPuras) {
+          const locCity = p.city || p.address || 'Bali';
+          const locProvince = p.province || 'Indonesia';
+          const shortLoc = p.address ? `${p.address}, ${locCity}` : locCity;
+          const fullLoc = p.address ? `${p.address}, ${locCity}, ${locProvince}` : `${locCity}, ${locProvince}`;
+          const penanggalanText = (p.benchmark || '').toLowerCase().includes('sasih') || p.sasih
+            ? `${p.sasih || day.sasih?.nama_sasih || ''} ${p.purnama_tilem || day.pengalantaka?.purnama_tilem || ''}`.trim()
+            : `${day.wewaran?.saptawara?.nama || ''} ${day.wewaran?.pancawara?.nama || ''} ${day.wewaran?.wuku?.nama || ''}`.trim();
 
-          // 1. Cek kecocokan sistem Pawukon (Wuku + Saptawara + Pancawara)
-          const isPawukonMatch = Boolean(
-            pWuku &&
-              pSapta &&
-              pPanca &&
-              pWuku === dWuku &&
-              pSapta === dSapta &&
-              pPanca === dPanca
-          );
+          const cycleText = (p.benchmark || '').toLowerCase().includes('sasih') || p.sasih
+            ? 'Penanggalan Sasih'
+            : 'Pawukon 210 hari';
 
-          // 2. Cek kecocokan sistem Sasih (Sasih + Purnama/Tilem)
-          const isSasihMatch = Boolean(
-            pSasih &&
-              pPT &&
-              (pPT === 'purnama' || pPT === 'tilem') &&
-              pSasih === dSasih &&
-              pPT === dPT
-          );
+          dayPuras.push({
+            id: p.id,
+            name: p.name,
+            type: p.type || 'Kahyangan Jagat',
+            address: p.address || '',
+            city: locCity,
+            province: locProvince,
+            phone: p.phone || null,
+            location_url: p.location_url || null,
+            latitude: null,
+            longitude: null,
+            benchmark: p.benchmark || (p.sasih ? 'Sasih' : 'Pawukon'),
+            wuku: p.wuku,
+            saptawara: p.saptawara,
+            pancawara: p.pancawara,
+            sasih: p.sasih,
+            purnama_tilem: p.purnama_tilem,
+            pelaksanaan_aktual: null,
+            rawPura: p,
+          });
 
-          // Jika pura tidak punya penanggalan pasti atau tidak jatuh di tanggal ini -> JANGAN TAMPILKAN
-          if (!isPawukonMatch && !isSasihMatch) {
-            continue;
-          }
-
-          const locCity = pura.city || pura.address || 'Bali';
-          const locProvince = pura.province || 'Indonesia';
-          const shortLoc = pura.address ? `${pura.address}, ${locCity}` : locCity;
-
-          const penanggalanText = isPawukonMatch
-            ? `${pura.saptawara} · ${pura.pancawara} · ${pura.wuku}`
-            : `${capFirst(pura.purnama_tilem)} ${capFirst(pura.sasih)}`;
-
-          const cycleText = isPawukonMatch ? 'Pawukon 210 hari' : 'Penanggalan Sasih';
-
-          items.push({
-            id: `bulan-${dateStr}-${pura.id}`,
-            dateStr,
-            formattedDate: formatIndoDate(dateStr),
-            dayName: getIndoDayName(dateStr),
-            dateBadge: createDateBadge(dateStr, itemCounter),
-            puraName: pura.name,
-            puraId: pura.id,
+          flatItems.push({
+            id: `${day.tanggal}-${p.id}`,
+            dateStr: day.tanggal,
+            formattedDate: formatIndoDate(day.tanggal),
+            dayName: getIndoDayName(day.tanggal),
+            dateBadge: createDateBadge(day.tanggal, counter),
+            puraName: p.name,
+            puraId: p.id,
             location: shortLoc,
-            fullAddress: pura.address || `${locCity}, ${locProvince}`,
-            puraType: pura.type || 'Kahyangan Jagat',
+            fullAddress: fullLoc,
+            puraType: p.type || 'Kahyangan Jagat',
             penanggalan: penanggalanText,
             cycleInfo: cycleText,
             timeString: null,
-            mapUrl: pura.location_url,
-            phone: pura.phone,
-            rawPura: pura,
+            mapUrl: p.location_url || null,
+            phone: p.phone || null,
+            rawPura: p,
           });
-          itemCounter++;
+          counter++;
         }
-      }
 
-      // Pastikan jadwal terurut tanggal menaik (1 s.d. akhir bulan)
-      items.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+        groups.push({
+          dateStr: day.tanggal,
+          formattedDate: formatIndoDate(day.tanggal),
+          dayName: getIndoDayName(day.tanggal),
+          wewaran: `${day.wewaran?.saptawara?.nama || ''} ${day.wewaran?.pancawara?.nama || ''} ${day.wewaran?.wuku?.nama || ''}`.trim() || day.sasih?.nama_sasih || 'Piodalan Pura',
+          sasih: day.sasih?.nama_sasih,
+          hariRaya: day.hari_raya?.[0]?.nama,
+          totalPura: dayPuras.length,
+          puras: dayPuras,
+        });
+      }
     }
 
-    return items;
-  }, [puras, filter, targetDates, kalenderData, enabled]);
+    // SKENARIO 3: TAB NAMA PURA
+    else if (filter.tab === 'pura') {
+      const q = (filter.namaPura || '').trim().toLowerCase();
+      if (!q) return { dayGroups: [], scheduleList: [] };
+
+      const targetPuras = puras.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          q.includes(p.name.toLowerCase()) ||
+          (p.city && p.city.toLowerCase().includes(q)) ||
+          (p.address && p.address.toLowerCase().includes(q))
+      );
+
+      if (targetPuras.length === 0) return { dayGroups: [], scheduleList: [] };
+
+      for (const day of kalenderData) {
+        const celebratingPuras = matchPurasForDay(day, targetPuras);
+        if (celebratingPuras.length === 0) continue;
+
+        const dayPuras: PiodalanDayPuraItem[] = [];
+        for (const p of celebratingPuras) {
+          const locCity = p.city || p.address || 'Bali';
+          const locProvince = p.province || 'Indonesia';
+          const shortLoc = p.address ? `${p.address}, ${locCity}` : locCity;
+          const fullLoc = p.address ? `${p.address}, ${locCity}, ${locProvince}` : `${locCity}, ${locProvince}`;
+          const penanggalanText = (p.benchmark || '').toLowerCase().includes('sasih') || p.sasih
+            ? `${p.sasih || day.sasih?.nama_sasih || ''} ${p.purnama_tilem || day.pengalantaka?.purnama_tilem || ''}`.trim()
+            : `${day.wewaran?.saptawara?.nama || ''} ${day.wewaran?.pancawara?.nama || ''} ${day.wewaran?.wuku?.nama || ''}`.trim();
+
+          const cycleText = (p.benchmark || '').toLowerCase().includes('sasih') || p.sasih
+            ? 'Penanggalan Sasih'
+            : 'Pawukon 210 hari';
+
+          dayPuras.push({
+            id: p.id,
+            name: p.name,
+            type: p.type || 'Kahyangan Jagat',
+            address: p.address || '',
+            city: locCity,
+            province: locProvince,
+            phone: p.phone || null,
+            location_url: p.location_url || null,
+            latitude: null,
+            longitude: null,
+            benchmark: p.benchmark || (p.sasih ? 'Sasih' : 'Pawukon'),
+            wuku: p.wuku,
+            saptawara: p.saptawara,
+            pancawara: p.pancawara,
+            sasih: p.sasih,
+            purnama_tilem: p.purnama_tilem,
+            pelaksanaan_aktual: null,
+            rawPura: p,
+          });
+
+          flatItems.push({
+            id: `${day.tanggal}-${p.id}`,
+            dateStr: day.tanggal,
+            formattedDate: formatIndoDate(day.tanggal),
+            dayName: getIndoDayName(day.tanggal),
+            dateBadge: createDateBadge(day.tanggal, counter),
+            puraName: p.name,
+            puraId: p.id,
+            location: shortLoc,
+            fullAddress: fullLoc,
+            puraType: p.type || 'Kahyangan Jagat',
+            penanggalan: penanggalanText,
+            cycleInfo: cycleText,
+            timeString: null,
+            mapUrl: p.location_url || null,
+            phone: p.phone || null,
+            rawPura: p,
+          });
+          counter++;
+        }
+
+        groups.push({
+          dateStr: day.tanggal,
+          formattedDate: formatIndoDate(day.tanggal),
+          dayName: getIndoDayName(day.tanggal),
+          wewaran: `${day.wewaran?.saptawara?.nama || ''} ${day.wewaran?.pancawara?.nama || ''} ${day.wewaran?.wuku?.nama || ''}`.trim() || day.sasih?.nama_sasih || 'Piodalan Pura',
+          sasih: day.sasih?.nama_sasih,
+          hariRaya: day.hari_raya?.[0]?.nama,
+          totalPura: dayPuras.length,
+          puras: dayPuras,
+        });
+      }
+    }
+
+    return { dayGroups: groups, scheduleList: flatItems };
+  }, [searchResult, purasMap, enabled, filter, kalenderData, puras]);
 
   return {
+    dayGroups,
     scheduleList,
+    totalDays: dayGroups.length,
     totalCount: scheduleList.length,
-    isLoading:
-      isPurasLoading ||
-      (canFetchDates && isDatesLoading) ||
-      (isKalenderNeeded && isKalenderLoading),
-    isError: isDatesError,
-    error: datesError,
+    isLoading: isPurasLoading || isKalenderLoading || (Boolean(searchParams) && isSearchLoading && dayGroups.length === 0),
+    isError: isSearchError && dayGroups.length === 0,
+    error: searchError,
     refetch,
   };
 }
@@ -503,30 +672,44 @@ export function useDayWariga(dateStr?: string | null) {
  * usePuraCeremonies mengambil susunan kegiatan piodalan dan acara suatu pura:
  * GET /api/v1/puras/:id/piodalans & GET /api/v1/piodalans/:id/acaras
  *
+ * Mengutamakan pemilihan siklus piodalan yang cocok dengan tanggal (dateStr) jika disediakan,
+ * atau memilih siklus piodalan terbaru sebagai fallback cerdas.
  * Mengembalikan susunan acara jika sudah diinput kontributor,
  * atau array kosong [] jika data belum diinput.
  */
-export function usePuraCeremonies(puraId?: number | null) {
+export function usePuraCeremonies(puraId?: number | null, dateStr?: string) {
   return useQuery<{
     records: PuraPiodalanRecord[];
     acaras: PiodalanAcaraItem[];
     hasContributedData: boolean;
   }>({
-    queryKey: ['piodalan', 'pura', 'ceremonies', puraId],
+    queryKey: ['piodalan', 'pura', 'ceremonies', puraId, dateStr],
     queryFn: async () => {
       if (!puraId) {
         return { records: [], acaras: [], hasContributedData: false };
       }
 
-      // 1. Ambil piodalan record pura
+      // 1. Ambil seluruh catatan riwayat piodalan pura
       const records = await fetchPuraPiodalans(puraId);
       if (!records || records.length === 0) {
         return { records: [], acaras: [], hasContributedData: false };
       }
 
-      // 2. Jika ada piodalan, ambil susunan acaras untuk piodalan terbaru
-      const latestPiodalan = records[0];
-      const acaras = await fetchPiodalanAcaras(latestPiodalan.id);
+      // 2. Tentukan siklus piodalan yang dievaluasi:
+      // Cocokkan dengan tanggal jadwal piodalan spesifik jika ada, atau gunakan yang terbaru
+      let targetPiodalan = records[0];
+      if (dateStr) {
+        const cleanDate = dateStr.slice(0, 10);
+        const matched = records.find(
+          (r) => r.ceremony_date && r.ceremony_date.startsWith(cleanDate)
+        );
+        if (matched) {
+          targetPiodalan = matched;
+        }
+      }
+
+      // 3. Ambil susunan tahapan acara untuk siklus piodalan terpilih
+      const acaras = await fetchPiodalanAcaras(targetPiodalan.id);
 
       return {
         records,

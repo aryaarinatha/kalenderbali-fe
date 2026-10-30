@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { CreatePiodalanPayload } from '../types/kelolaPura.types';
 import { usePiodalanMutations } from '../hooks/useKelolaPura';
+import { getTodayWITA } from '../utils/kelolaPuraUtils';
 import { useAlertStore } from '@/stores/useAlertStore';
 
 /**
@@ -45,10 +46,8 @@ export const PiodalanEntryModal: React.FC<PiodalanEntryModalProps> = ({
   const { showAlert } = useAlertStore();
   const { createPiodalan, isCreating } = usePiodalanMutations(puraId);
 
-  // State Formulir
-  const [ceremonyDate, setCeremonyDate] = useState<string>(
-    new Date().toISOString().slice(0, 10)
-  );
+  // State Formulir (Tanggal diinisialisasi ke zona waktu WITA absolut agar presisi)
+  const [ceremonyDate, setCeremonyDate] = useState<string>(() => getTodayWITA());
   const [description, setDescription] = useState<string>('Piodalan Ageng Pura');
   const [levelId, setLevelId] = useState<number | ''>(2); // Default Madya (2)
 

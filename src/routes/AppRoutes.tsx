@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import AppLayout from '@/components/layout/AppLayout';
 
@@ -21,6 +22,12 @@ import OtonanPage from '@/features/otonan/pages/OtonanPage';
 import PiodalanPage from '@/features/piodalan/pages/PiodalanPage';
 import HariRayaPage from '@/features/hari-raya/pages/HariRayaPage';
 import KelolaPuraPage from '@/features/kelola-pura/pages/KelolaPuraPage';
+import WartaPage from '@/features/warta/pages/WartaPage';
+import WartaDetailPage from '@/features/warta/pages/WartaDetailPage';
+
+// Import komponen halaman Info Kontak dengan Route-Level Code Splitting (fe_strategy.md 8.12)
+const KontakPage = lazy(() => import('@/features/kontak/pages/KontakPage'));
+import { KontakSkeleton } from '@/features/kontak/components/KontakSkeleton';
 
 // Import komponen-komponen halaman Manajemen Admin
 import AdminUserPage from '@/features/admin/pages/AdminUserPage';
@@ -103,28 +110,34 @@ export default function AppRoutes() {
             <Route path="layanan/kelola-pura" element={<Navigate to="/kelola-pura" replace />} />
           </Route>
 
-          <Route
-            path="info-kita"
-            element={
-              <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-2">
-                <h2 className="text-xl font-bold text-slate-800">Info Kita</h2>
-                <p className="text-sm text-slate-500">Artikel, berita, dan informasi seputar budaya Bali.</p>
-              </div>
-            }
-          />
+          {/* ==================================================================== */}
+          {/* HALAMAN WARTA BUDAYA BALI (MENGGANTIKAN FITUR LAMA INFO KITA)        */}
+          {/* Menyajikan artikel, wawasan tradisi, & publikasi berita budaya       */}
+          {/* ==================================================================== */}
+          <Route path="warta" element={<WartaPage />} />
+          {/* Halaman baca artikel warta penuh (dedicated reading page) */}
+          <Route path="warta/:id" element={<WartaDetailPage />} />
 
+          {/* Rute kompatibilitas pengalihan /info-kita ke /warta */}
+          <Route path="info-kita" element={<Navigate to="/warta" replace />} />
+
+          {/* ==================================================================== */}
+          {/* HALAMAN INFO KONTAK & DUKUNGAN PENGEMBANG (AGENTS.md & fe_strategy.md) */}
+          {/* ==================================================================== */}
           <Route
             path="kontak"
             element={
-              <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-2">
-                <h2 className="text-xl font-bold text-slate-800">Info Kontak</h2>
-                <p className="text-sm text-slate-500">Hubungi pengembang untuk masukan atau kerja sama.</p>
-              </div>
+              <Suspense fallback={<KontakSkeleton />}>
+                <KontakPage />
+              </Suspense>
             }
           />
 
-          {/* Alias rute info-kontak agar otomatis mengarah ke /kontak */}
+          {/* Alias rute info-kontak & about_us untuk kompatibilitas penuh */}
           <Route path="info-kontak" element={<Navigate to="/kontak" replace />} />
+          <Route path="about_us" element={<Navigate to="/kontak" replace />} />
+          <Route path="about" element={<Navigate to="/kontak" replace />} />
+          <Route path="tentang-kami" element={<Navigate to="/kontak" replace />} />
 
           {/* ==================================================================== */}
           {/* RUTE KHUSUS ADMINISTRATOR (DILINDUNGI OLEH ADMINROUTE)              */}

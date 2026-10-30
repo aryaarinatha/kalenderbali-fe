@@ -76,6 +76,8 @@ export interface PuraBackendItem {
   country?: string | null;
   country_id?: number | null;
   location_url?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 
   /** Dasar penentuan piodalan: 'Pawukon' (siklus 210 hari) atau 'Sasih' (lunar phase) */
   benchmark?: string | null;
@@ -189,6 +191,70 @@ export interface PiodalanScheduleItem {
 }
 
 // ==============================================================================
+// 4B. STRUKTUR HIERARKIS 3-LEVEL PIODALAN (Piodalan -> List Pura -> Detail Acara)
+// ==============================================================================
+
+/**
+ * Representasi profil pura pada daftar pura yang melangsungkan piodalan (Level 2)
+ */
+export interface PiodalanDayPuraItem {
+  id: number;
+  name: string;
+  type: string;
+  address: string;
+  city: string;
+  province: string;
+  phone?: string | null;
+  location_url?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  benchmark?: string | null;
+  wuku?: string | null;
+  saptawara?: string | null;
+  pancawara?: string | null;
+  sasih?: string | null;
+  purnama_tilem?: string | null;
+  /** Pelaksanaan aktual & susunan acara yang diinput kontributor */
+  pelaksanaan_aktual?: {
+    piodalan_id?: string | number;
+    tingkat_upacara?: string;
+    deskripsi?: string;
+    total_acara?: number;
+    acaras?: {
+      id: string | number;
+      nama: string;
+      waktu: string;
+      pic_nama?: string;
+      pic_phone?: string;
+    }[];
+  } | null;
+  rawPura?: PuraBackendItem;
+}
+
+/**
+ * Kelompok agenda piodalan per tanggal/hari kalender (Level 1 dalam hierarki piodalan)
+ * Ditampilkan sebagai kartu piodalan utama dengan tombol 'List Pura' dan 'Detail Tanggal'
+ */
+export interface PiodalanDayGroup {
+  /** Tanggal dalam format ISO (YYYY-MM-DD) */
+  dateStr: string;
+  /** Tanggal lengkap bahasa Indonesia (contoh: 'Sabtu, 10 Oktober 2026') */
+  formattedDate: string;
+  /** Nama hari bahasa Indonesia (contoh: 'Sabtu') */
+  dayName: string;
+  /** Nama rahinan / wewaran (contoh: 'Saniscara Kliwon Wayang') */
+  wewaran: string;
+  /** Nama sasih jika berbasis sasih */
+  sasih?: string;
+  /** Nama hari raya jika bertepatan (contoh: 'Tumpek Wayang') */
+  hariRaya?: string;
+  /** Total pura yang merayakan piodalan pada tanggal ini */
+  totalPura: number;
+  /** Daftar seluruh pura yang melaksanakan piodalan pada hari ini */
+  puras: PiodalanDayPuraItem[];
+}
+
+// ==============================================================================
 // 5. MASTER REFERENSI WEWARAN & DROPDOWN
 // ==============================================================================
 
@@ -220,4 +286,96 @@ export interface PiodalanModalState {
   isOpen: boolean;
   activeSection: PiodalanModalActiveSection;
   selectedSchedule: PiodalanScheduleItem | null;
+}
+
+// ==============================================================================
+// 7. KONTRAK DATA MESIN PENCARIAN PIODALAN (BACKEND GO: /api/v1/search/piodalan)
+// ==============================================================================
+
+/**
+ * Parameter kueri yang dikirimkan ke mesin pencari piodalan backend Go:
+ * GET /api/v1/search/piodalan
+ */
+export interface PiodalanSearchParams {
+  /** Mode pencarian: 'wewaran' (Pawukon), 'bulan', 'pura' (nama/wilayah), atau 'rentang' */
+  mode: 'wewaran' | 'bulan' | 'pura' | 'rentang';
+  /** Nama Saptawara untuk mode wewaran (contoh: "Buda") */
+  saptawara?: string;
+  /** Nama Pancawara untuk mode wewaran (contoh: "Kliwon") */
+  pancawara?: string;
+  /** Nama Wuku untuk mode wewaran (contoh: "Dungulan" / "Dunggulan") */
+  wuku?: string;
+  /** Tahun Masehi target pencarian (contoh: 2026) */
+  tahun?: number | string;
+  /** Nomor bulan Masehi 1-12 untuk mode bulan (contoh: 6 untuk Juni) */
+  bulan?: number | string;
+  /** Kata kunci nama pura atau wilayah pada mode pura */
+  q?: string;
+  /** Nomor ID pura spesifik pada mode pura */
+  pura_id?: number | string;
+  /** Tanggal awal (YYYY-MM-DD) pada mode rentang */
+  start_date?: string;
+  /** Tanggal akhir (YYYY-MM-DD) pada mode rentang */
+  end_date?: string;
+}
+
+/**
+ * Rincian tahapan susunan acara aktual (Melasti, Puncak, Nyineb)
+ * yang disertakan di dalam hasil pencarian piodalan backend Go
+ */
+export interface BackendPiodalanAcaraDetail {
+  id: string;
+  nama: string;
+  waktu: string;
+  pic_nama?: string;
+  pic_phone?: string;
+}
+
+/**
+ * Ringkasan rekaman riil perayaan piodalan pura dari database backend Go
+ */
+export interface BackendPiodalanActual {
+  piodalan_id: string;
+  tingkat_upacara?: string;
+  deskripsi?: string;
+  total_acara?: number;
+  acaras?: BackendPiodalanAcaraDetail[];
+}
+
+/**
+ * Profil ringkas pura penyelenggara piodalan dari hasil pencarian backend Go
+ */
+export interface BackendPiodalanPuraDetail {
+  id: string;
+  nama: string;
+  tipe: string;
+  alamat: string;
+  kabupaten: string;
+  provinsi: string;
+  latitude?: number;
+  longitude?: number;
+  pelaksanaan_aktual?: BackendPiodalanActual;
+}
+
+/**
+ * Pengelompokan seluruh agenda perayaan piodalan pada satu tanggal kalender Masehi
+ */
+export interface BackendPiodalanScheduleDay {
+  tanggal: string;
+  wewaran: string;
+  sasih: string;
+  hari_raya?: string;
+  total_pura: number;
+  puras: BackendPiodalanPuraDetail[];
+}
+
+/**
+ * Struktur payload respons lengkap dari endpoint pencarian piodalan backend Go:
+ * GET /api/v1/search/piodalan
+ */
+export interface BackendPiodalanSearchResult {
+  mode: string;
+  filter: Record<string, unknown>;
+  total_jadwal: number;
+  schedules: BackendPiodalanScheduleDay[];
 }

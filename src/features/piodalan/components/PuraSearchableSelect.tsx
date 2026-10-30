@@ -43,12 +43,12 @@ export const PuraSearchableSelect: React.FC<PuraSearchableSelectProps> = ({
   // Ambil daftar master 461 pura dari cache backend Go
   const { data: purasList = [] } = useAllPuras();
 
-  // Hanya tampilkan pura yang memiliki penanggalan pasti (Pawukon lengkap atau Sasih lengkap)
+  // Hanya tampilkan pura yang memiliki penanggalan pasti (Pawukon lengkap atau Sasih)
   // Menghindari penyajian data tidak valid/palsu kepada pengguna
   const validPuras = useMemo(() => {
     return purasList.filter((p) => {
       const hasPawukon = Boolean(p.wuku && p.saptawara && p.pancawara);
-      const hasSasih = Boolean(p.sasih && p.purnama_tilem);
+      const hasSasih = Boolean(p.sasih);
       return hasPawukon || hasSasih;
     });
   }, [purasList]);

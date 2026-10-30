@@ -10,6 +10,7 @@ import {
   CalendarDays,
 } from 'lucide-react';
 import { usePiodalanSubmissions } from '../hooks/useKelolaPura';
+import { getTodayWITA } from '../utils/kelolaPuraUtils';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useAlertStore } from '@/stores/useAlertStore';
 
@@ -49,10 +50,8 @@ export const PiodalanSubmissionModal: React.FC<PiodalanSubmissionModalProps> = (
   const { showAlert } = useAlertStore();
   const { addPiodalanSubmission } = usePiodalanSubmissions(puraId);
 
-  // State Formulir
-  const [ceremonyDate, setCeremonyDate] = useState<string>(
-    new Date().toISOString().slice(0, 10)
-  );
+  // State Formulir (Tanggal diinisialisasi ke zona waktu WITA absolut agar presisi)
+  const [ceremonyDate, setCeremonyDate] = useState<string>(() => getTodayWITA());
   const [description, setDescription] = useState<string>('Piodalan Ageng Pura');
   const [levelId, setLevelId] = useState<number | ''>(2);
   const [reason, setReason] = useState<string>('');

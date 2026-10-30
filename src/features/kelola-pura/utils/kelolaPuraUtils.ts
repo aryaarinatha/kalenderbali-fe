@@ -10,6 +10,20 @@ import type { PuraBackendItem } from '../types/kelolaPura.types';
  */
 
 /**
+ * getTodayWITA mengembalikan tanggal hari ini dalam format YYYY-MM-DD
+ * yang dikunci secara absolut ke zona waktu WITA (Asia/Makassar / UTC+8).
+ * Mencegah pergeseran tanggal akibat perbedaan offset UTC browser.
+ */
+export function getTodayWITA(): string {
+  const now = new Date();
+  const witaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Makassar' }));
+  const year = witaTime.getFullYear();
+  const month = String(witaTime.getMonth() + 1).padStart(2, '0');
+  const day = String(witaTime.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Daftar 9 Kabupaten/Kota resmi di Provinsi Bali:
  */
 export const BALI_OFFICIAL_REGENCIES = [

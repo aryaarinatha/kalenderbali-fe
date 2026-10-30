@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { CalendarDays } from 'lucide-react';
 import type { KalenderHarian } from '../types/kalender.types';
 import { getIndoMonthName, getTodayWITA, parseISODate } from '../utils/calendarUtils';
-import { DUMMY_MONTHLY_PIODALAN_TOTAL } from '../data/dummyCalendarData';
 import { useMonthlyZodiac } from '@/features/keterangan';
 import { ZodiacDetailModal } from './ZodiacDetailModal';
 
@@ -36,7 +35,7 @@ export const CalendarHero: React.FC<CalendarHeroProps> = ({
   sakaYearText,
   monthlyHolidays,
   todayDateString,
-  monthlyPiodalanCount = DUMMY_MONTHLY_PIODALAN_TOTAL,
+  monthlyPiodalanCount = 0,
   isLoading = false,
 }) => {
   // State untuk mengontrol visibilitas modal pop-up detail zodiak

@@ -1,9 +1,12 @@
 import { apiClient } from '@/lib/axios';
+import type { KalenderHarian } from '@/features/kalender/types/kalender.types';
 import type {
   PuraBackendItem,
   MasterDropdownOption,
   PuraPiodalanRecord,
   PiodalanAcaraItem,
+  PiodalanSearchParams,
+  BackendPiodalanSearchResult,
 } from '../types/piodalan.types';
 
 /**
@@ -93,7 +96,7 @@ export async function fetchMasterDropdown(
       return [];
     }
 
-    return values.map((val: any) => ({
+    return values.map((val: Record<string, unknown>) => ({
       id: String(val.id),
       name: String(val.name),
       description: val.description ? String(val.description).trim() : undefined,
@@ -146,8 +149,8 @@ export async function fetchPiodalanDates(
 
     // Ekstrak string tanggal YYYY-MM-DD
     return hasilList
-      .map((item: any) => item.tanggal)
-      .filter((dateStr: any) => typeof dateStr === 'string' && Boolean(dateStr));
+      .map((item: Record<string, unknown>) => String(item.tanggal || ''))
+      .filter((dateStr: string) => Boolean(dateStr));
   } catch {
     // Jika kombinasi tidak valid menurut kalender Pawukon, kembalikan array kosong secara aman
     return [];
@@ -172,7 +175,7 @@ export async function fetchPiodalanDates(
  * @param dateStr Tanggal Masehi dalam format YYYY-MM-DD
  * @returns Promise berisi objek data harian kalender atau null
  */
-export async function fetchDayWariga(dateStr: string): Promise<any | null> {
+export async function fetchDayWariga(dateStr: string): Promise<KalenderHarian | null> {
   try {
     const response = await apiClient.get('/kalender', {
       params: {
@@ -181,7 +184,7 @@ export async function fetchDayWariga(dateStr: string): Promise<any | null> {
       },
     });
 
-    return response.data?.data?.[0] || null;
+    return (response.data?.data?.[0] as KalenderHarian) || null;
   } catch {
     return null;
   }
@@ -278,16 +281,16 @@ export async function fetchWarigaElementExplanation(
         const values = res.data?.data?.values;
         if (Array.isArray(values)) {
           const match = values.find(
-            (v: any) =>
-              v.name?.toLowerCase().trim() === cleanName ||
-              (Array.isArray(v.aliases) && v.aliases.includes(cleanName))
+            (v: Record<string, unknown>) =>
+              String(v.name || '').toLowerCase().trim() === cleanName ||
+              (Array.isArray(v.aliases) && (v.aliases as string[]).includes(cleanName))
           );
           if (match) {
             return {
               id: String(match.id),
-              name: match.name,
-              description: match.description || '',
-              typeName: res.data?.data?.type?.name,
+              name: String(match.name),
+              description: String(match.description || ''),
+              typeName: String(res.data?.data?.type?.name || ''),
               typeCode: typeCode,
             };
           }
@@ -304,23 +307,58 @@ export async function fetchWarigaElementExplanation(
     const matches = searchRes.data?.data;
     if (Array.isArray(matches) && matches.length > 0) {
       const exactMatch = matches.find(
-        (m: any) =>
+        (m: Record<string, unknown>) =>
           m.type_code === typeCode ||
-          m.name?.toLowerCase().trim() === cleanName ||
-          (Array.isArray(m.aliases) && m.aliases.includes(cleanName))
+          String(m.name || '').toLowerCase().trim() === cleanName ||
+          (Array.isArray(m.aliases) && (m.aliases as string[]).includes(cleanName))
       );
       const chosen = exactMatch || matches[0];
       return {
         id: String(chosen.id),
-        name: chosen.name,
-        description: chosen.description || '',
-        typeName: chosen.type_name,
-        typeCode: chosen.type_code,
+        name: String(chosen.name),
+        description: String(chosen.description || ''),
+        typeName: String(chosen.type_name || ''),
+        typeCode: String(chosen.type_code || ''),
       };
     }
 
     return null;
   } catch {
+    return null;
+  }
+}
+
+// ==============================================================================
+// 7. MESIN PENCARIAN PIODALAN TERPADU BACKEND GO (GET /api/v1/search/piodalan)
+// ==============================================================================
+
+/**
+ * searchPiodalan memanggil mesin pencarian piodalan terpadu backend Go:
+ * GET /api/v1/search/piodalan
+ *
+ * Menggantikan beban iterasi 461 pura dan 365 hari kalender di memori browser.
+ * Seluruh komputasi siklus 210 hari Pawukon, fase Sasih candra, dan penelusuran
+ * database PostgreSQL dieksekusi secara instan dan efisien di server Go.
+ *
+ * Mendukung 4 skenario pencarian:
+ * 1. Mode Wewaran ('wewaran'): saptawara, pancawara, wuku, tahun
+ * 2. Mode Bulan ('bulan'): bulan (1-12), tahun
+ * 3. Mode Pura ('pura'): q (kata kunci nama/lokasi) atau pura_id, tahun
+ * 4. Mode Rentang ('rentang'): start_date, end_date (paritas legacy GET /api/cariPiodalan)
+ *
+ * @param params Objek parameter pencarian PiodalanSearchParams
+ * @returns Promise berisi payload BackendPiodalanSearchResult atau null jika gagal
+ */
+export async function searchPiodalan(
+  params: PiodalanSearchParams
+): Promise<BackendPiodalanSearchResult | null> {
+  try {
+    const response = await apiClient.get('/search/piodalan', { params });
+    const data = response.data?.data;
+    if (!data) return null;
+    return data as BackendPiodalanSearchResult;
+  } catch (error) {
+    console.error('Gagal melakukan pencarian piodalan ke backend Go:', error);
     return null;
   }
 }

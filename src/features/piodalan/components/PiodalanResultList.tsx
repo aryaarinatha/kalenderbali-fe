@@ -1,120 +1,111 @@
 import React, { useState } from 'react';
-import { Calendar, MapPin, ChevronRight, Sparkles } from 'lucide-react';
-import type { PiodalanScheduleItem, PiodalanModalActiveSection } from '../types/piodalan.types';
-import { getPuraTypeBadgeStyle } from '../utils/piodalanUtils';
+import { Calendar, Landmark, CalendarDays, Sparkles } from 'lucide-react';
+import type { PiodalanDayGroup } from '../types/piodalan.types';
 
 /**
  * ==============================================================================
- * KOMPONEN: PiodalanResultList (Daftar Hasil Pencarian Piodalan Kolom Kiri)
+ * PROPS: PiodalanResultList
  * ==============================================================================
- * Komponen utama penyaji hasil pencarian piodalan di kolom kiri (~2/3 layar).
- *
- * Fitur & Tata Letak:
- * 1. Header kartu: Judul 'Hasil pencarian', sub-deskripsi, dan badge jumlah jadwal
- * 2. Header tabel: TANGGAL, PURA & LOKASI, PENANGGALAN, AKSI
- * 3. Baris kartu piodalan:
- *    - Kotak tanggal ber-badge tebal (angka tanggal + singkatan bulan kapital)
- *    - Nama pura tebal + pill kategori pura + alamat lokasi
- *    - Penanggalan wewaran (contoh: Buda · Wage · Klawu / Pawukon 210 hari)
- *    - Tombol aksi terpadu:
- *      * 'Detail': Membuka modal pop-up 2-section (Section 1: Detail Wariga & Section 2: Detail Pura)
- *      * Tautan pintas 'Detail Wariga' langsung untuk kenyamanan krama
- * 4. Paginasi bertahap: Tombol 'Tampilkan X jadwal lainnya' (menghindari scroll tak terhingga)
- * 5. State kosong (Empty State) & Skeleton loading berdimensi presisi (CLS = 0)
- * ==============================================================================
+ * Antarmuka properti untuk komponen daftar hasil pencarian agenda piodalan.
  */
-
 interface PiodalanResultListProps {
-  /** Daftar seluruh jadwal piodalan yang cocok dengan filter */
-  scheduleList: PiodalanScheduleItem[];
+  /** Kelompok perayaan piodalan per hari/tanggal (Level 1 dalam hierarki) */
+  dayGroups: PiodalanDayGroup[];
 
-  /** Jumlah total jadwal yang ditemukan */
+  /** Jumlah total pura yang merayakan piodalan */
   totalCount: number;
 
   /** Status pemuatan data dari backend */
   isLoading?: boolean;
 
   /**
-   * Callback untuk membuka modal dialog 2 section
-   * @param item Objek jadwal piodalan yang dipilih
-   * @param initialSection Section awal yang ingin dibuka ('wariga' atau 'pura')
+   * Callback ketika tombol 'List Pura' pada kartu piodalan diklik (Level 2)
+   * Membuka modal daftar pura yang merayakan piodalan pada tanggal tersebut
    */
-  onOpenScheduleDetail: (item: PiodalanScheduleItem, initialSection: PiodalanModalActiveSection) => void;
+  onOpenPuraList: (dayGroup: PiodalanDayGroup) => void;
+
+  /**
+   * Callback ketika tombol 'Detail Tanggal' pada kartu piodalan diklik
+   * Membuka rincian 15 dimensi penanggalan wariga hari tersebut
+   */
+  onOpenDayWariga: (dateStr: string) => void;
 
   /** Callback untuk mereset filter jika hasil pencarian kosong */
   onResetFilter?: () => void;
+
+  /** Judul dinamis ringkasan pencarian (contoh: "Data Piodalan Bulan Oktober 2026") */
+  resultTitle?: string;
 }
 
-/** Jumlah item awal yang ditampilkan sebelum tombol 'Tampilkan lainnya' diklik */
+/** Jumlah kartu awal yang ditampilkan sebelum tombol 'Tampilkan lainnya' diklik */
 const INITIAL_DISPLAY_LIMIT = 6;
-/** Jumlah penambahan item setiap kali tombol diklik */
+/** Penambahan jumlah kartu tiap kali tombol ditekan */
 const LOAD_MORE_STEP = 6;
 
+/**
+ * ==============================================================================
+ * KOMPONEN: PiodalanResultList (Daftar Kartu Piodalan Utama - Level 1)
+ * ==============================================================================
+ * Mengimplementasikan hierarki 3-level dengan kepatuhan penuh pada Design System:
+ * 1. Setiap kartu merepresentasikan SATU AGENDA PIODALAN / TANGGAL (Level 1)
+ * 2. Visual selaras 100% dengan AGENTS.md dan modul resmi (Kalender Bali & Cari Otonan):
+ *    - Kartu putih elegan (bg-white rounded-2xl border border-slate-200/90 shadow-xs)
+ *    - Aksen Brand Resmi: Teal Tirta Bali (#0e9f90) & Mint Subtle (#e6f7f5)
+ *    - Watermark arsitektur siluet Candi Bentar di pojok kanan bawah
+ *    - Angka dan penanggalan menggunakan tabular-nums
+ * 3. Dua tombol aksi baku:
+ *    - 'List Pura (X Pura)': Tombol Utama Teal (#0e9f90) -> Membuka Level 2 (Modal Daftar Pura)
+ *    - 'Detail Tanggal': Tombol Sekunder Outline -> Membuka Rincian Wariga 15 Dimensi
+ * ==============================================================================
+ */
 export const PiodalanResultList: React.FC<PiodalanResultListProps> = ({
-  scheduleList,
+  dayGroups,
   totalCount,
   isLoading = false,
-  onOpenScheduleDetail,
+  onOpenPuraList,
+  onOpenDayWariga,
   onResetFilter,
+  resultTitle = 'Hasil Pencarian Piodalan',
 }) => {
-  // State pembatasan jumlah item yang ditampilkan (paginasi bertahap)
+  // Paginasi bertahap untuk kenyamanan scroll dan performa rendering instan
   const [displayLimit, setDisplayLimit] = useState<number>(INITIAL_DISPLAY_LIMIT);
 
-  // Item yang sedang aktif dirender pada tampilan saat ini
-  const visibleSchedules = scheduleList.slice(0, displayLimit);
-  const remainingCount = totalCount - visibleSchedules.length;
+  const visibleDayGroups = dayGroups.slice(0, displayLimit);
+  const remainingCount = dayGroups.length - visibleDayGroups.length;
 
   const handleLoadMore = () => {
     setDisplayLimit((prev) => prev + LOAD_MORE_STEP);
   };
 
-  // Helper pemilih aksen warna garis tepi badge tanggal
-  const getBadgeBorderClass = (variant: 'teal' | 'emerald' | 'indigo' | 'amber') => {
-    switch (variant) {
-      case 'teal':
-        return 'border-l-teal-600 text-teal-700';
-      case 'emerald':
-        return 'border-l-emerald-600 text-emerald-700';
-      case 'indigo':
-        return 'border-l-indigo-600 text-indigo-700';
-      case 'amber':
-        return 'border-l-amber-600 text-amber-700';
-      default:
-        return 'border-l-teal-600 text-teal-700';
-    }
-  };
-
   // ============================================================================
   // 1. STATE PEMUATAN DATA (SKELETON SCREEN - CLS = 0)
   // ============================================================================
+  // Menggunakan dimensi presisi menyamai layout data asli agar CLS = 0 (AGENTS.md 4.8)
   if (isLoading) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-7 shadow-xs space-y-6">
+      <div className="space-y-4">
         {/* Header Skeleton */}
-        <div className="flex items-center justify-between">
-          <div className="space-y-2">
-            <div className="h-6 w-36 bg-slate-100 rounded-md animate-pulse" />
-            <div className="h-4 w-64 bg-slate-100 rounded-md animate-pulse" />
-          </div>
-          <div className="h-7 w-20 bg-slate-100 rounded-full animate-pulse" />
+        <div className="flex items-center justify-between pb-2">
+          <div className="h-6 w-48 bg-slate-200/80 rounded-md animate-pulse" />
+          <div className="h-6 w-24 bg-slate-200/80 rounded-full animate-pulse" />
         </div>
 
-        {/* 6 Baris Skeleton Presisi Dimensi */}
-        <div className="divide-y divide-slate-100">
-          {[1, 2, 3, 4, 5, 6].map((idx) => (
-            <div key={idx} className="py-4.5 flex items-center justify-between gap-4 animate-pulse">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-slate-100 rounded-xl" />
-                <div className="space-y-2">
-                  <div className="h-4.5 w-44 bg-slate-100 rounded-md" />
-                  <div className="h-3.5 w-32 bg-slate-100 rounded-md" />
-                </div>
+        {/* 4 Kartu Skeleton Berdimensi Presisi */}
+        <div className="space-y-4">
+          {[1, 2, 3, 4].map((idx) => (
+            <div
+              key={idx}
+              className="h-36 sm:h-40 rounded-2xl bg-white border border-slate-200/90 p-5 sm:p-6 shadow-xs flex flex-col justify-between animate-pulse"
+            >
+              <div className="space-y-2">
+                <div className="h-3 w-28 bg-slate-200 rounded-md" />
+                <div className="h-6 w-56 bg-slate-200 rounded-md" />
+                <div className="h-4 w-40 bg-slate-200 rounded-md" />
               </div>
-              <div className="hidden sm:block space-y-2">
-                <div className="h-4 w-36 bg-slate-100 rounded-md" />
-                <div className="h-3 w-24 bg-slate-100 rounded-md" />
+              <div className="flex gap-3 pt-2">
+                <div className="h-10 w-32 bg-slate-200 rounded-xl" />
+                <div className="h-10 w-32 bg-slate-200 rounded-xl" />
               </div>
-              <div className="h-9 w-20 bg-slate-100 rounded-xl" />
             </div>
           ))}
         </div>
@@ -125,10 +116,11 @@ export const PiodalanResultList: React.FC<PiodalanResultListProps> = ({
   // ============================================================================
   // 2. STATE KOSONG (EMPTY STATE JIKA TIDAK ADA HASIL)
   // ============================================================================
-  if (!scheduleList || scheduleList.length === 0) {
+  // Menampilkan pesan panduan santun dengan palet resmi Teal & Slate
+  if (!dayGroups || dayGroups.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-slate-200/90 p-8 sm:p-12 shadow-xs text-center space-y-4">
-        <div className="w-16 h-16 rounded-2xl bg-teal-50 border border-teal-200/60 flex items-center justify-center mx-auto text-[#0e9f90]">
+        <div className="w-16 h-16 rounded-2xl bg-teal-50 border border-teal-200/60 flex items-center justify-center mx-auto text-[#0d9488]">
           <Calendar className="w-8 h-8" />
         </div>
         <div className="max-w-md mx-auto space-y-1.5">
@@ -136,14 +128,14 @@ export const PiodalanResultList: React.FC<PiodalanResultListProps> = ({
             Tidak ada piodalan yang cocok
           </h4>
           <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
-            Kombinasi wewaran, bulan, atau nama pura yang Anda masukkan tidak menghasilkan jadwal pada tahun ini. Silakan atur ulang filter pencarian Anda.
+            Kombinasi wewaran, bulan, atau nama pura yang Anda masukkan tidak menghasilkan jadwal pada tahun ini. Silakan sesuaikan kembali filter pencarian Anda.
           </p>
         </div>
         {onResetFilter && (
           <button
             type="button"
             onClick={onResetFilter}
-            className="h-10 px-5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-all cursor-pointer inline-flex items-center gap-2"
+            className="h-10 px-5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 font-bold text-xs transition-all cursor-pointer inline-flex items-center gap-2 [touch-action:manipulation]"
           >
             <span>Atur ulang filter pencarian</span>
           </button>
@@ -153,142 +145,159 @@ export const PiodalanResultList: React.FC<PiodalanResultListProps> = ({
   }
 
   // ============================================================================
-  // 3. TAMPILAN UTAMA TABEL HASIL PENCARIAN
+  // 3. TAMPILAN UTAMA: KARTU PIODALAN PER TANGGAL (LEVEL 1)
   // ============================================================================
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-7 shadow-xs space-y-5">
+    <div className="space-y-5">
       {/* ==================================================================== */}
-      {/* A. HEADER KARTU: JUDUL & BADGE JUMLAH JADWAL                         */}
+      {/* A. HEADER DAFTAR HASIL PENCARIAN                                     */}
       {/* ==================================================================== */}
-      <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+      <div className="flex items-center justify-between pb-1">
         <div>
           <h3 className="text-base sm:text-lg font-extrabold text-[#0f172a] tracking-tight">
-            Hasil pencarian
+            {resultTitle}
           </h3>
-          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
-            Jadwal dan pura yang sesuai dengan kombinasi terpilih.
+          <p className="text-xs text-slate-500 font-medium mt-0.5">
+            Pilih <span className="font-bold text-slate-700">List Pura</span> untuk melihat daftar pura atau{' '}
+            <span className="font-bold text-slate-700">Detail Tanggal</span> untuk melihat wariga lengkap.
           </p>
         </div>
 
-        {/* Badge Jumlah Jadwal Ditemukan */}
-        <span className="px-3.5 py-1.5 rounded-full bg-slate-100 text-slate-700 font-extrabold text-xs tabular-nums shrink-0">
-          {totalCount} jadwal
-        </span>
+        {/* Badge Jumlah Agenda & Total Pura (Format Semantik Mint Subtle) */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="px-3 py-1 rounded-full bg-[#e6f7f5] border border-teal-200/60 text-teal-800 text-xs font-black tabular-nums">
+            {dayGroups.length} Agenda
+          </span>
+          <span className="hidden sm:inline-block px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-extrabold tabular-nums">
+            {totalCount} Pura
+          </span>
+        </div>
       </div>
 
       {/* ==================================================================== */}
-      {/* B. HEADER KOLOM TABEL                                                */}
+      {/* B. DAFTAR KARTU PIODALAN (LEVEL 1 - SESUAI PAKEM RESMI DESIGN SYSTEM) */}
       {/* ==================================================================== */}
-      <div className="hidden sm:grid sm:grid-cols-12 gap-4 px-3 py-2 text-[11px] font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 select-none">
-        <div className="sm:col-span-2">Tanggal</div>
-        <div className="sm:col-span-5">Pura & Lokasi</div>
-        <div className="sm:col-span-3">Penanggalan</div>
-        <div className="sm:col-span-2 text-right">Aksi</div>
-      </div>
-
-      {/* ==================================================================== */}
-      {/* C. DAFTAR BARIS HASIL PIODALAN                                       */}
-      {/* ==================================================================== */}
-      <div className="divide-y divide-slate-100">
-        {visibleSchedules.map((schedule) => {
-          const badgeColorClass = getBadgeBorderClass(schedule.dateBadge.colorVariant);
-
-          return (
-            <div
-              key={schedule.id}
-              className="py-4 sm:py-4.5 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4 items-center hover:bg-slate-50/70 rounded-xl px-2 sm:px-3 transition-colors group"
+      <div className="space-y-4">
+        {visibleDayGroups.map((day) => (
+          <div
+            key={day.dateStr}
+            className="group relative rounded-2xl bg-white border border-slate-200/90 p-5 sm:p-6 shadow-xs hover:border-teal-500/40 hover:shadow-sm transition-all overflow-hidden"
+          >
+            {/* Siluet Vektor Arsitektur Candi Bentar / Pura Bali sebagai Watermark Halus */}
+            <svg
+              className="w-28 h-28 sm:w-36 sm:h-36 text-slate-100/90 group-hover:text-teal-900/[0.04] absolute -right-3 -bottom-4 pointer-events-none select-none transition-transform group-hover:scale-105 duration-300"
+              viewBox="0 0 64 64"
+              fill="currentColor"
+              aria-hidden="true"
             >
-              {/* Kolom 1: Tanggal Badge Visual (Angka Besar + Singkatan Bulan) */}
-              <div className="sm:col-span-2 flex items-center gap-3">
-                <div
-                  className={`border-l-4 ${badgeColorClass} pl-3 py-0.5 select-none`}
-                  title={schedule.formattedDate}
-                >
-                  <span className="text-2xl sm:text-3xl font-extrabold tabular-nums tracking-tight leading-none block">
-                    {schedule.dateBadge.day}
+              {/* Tingkat atap dan candi */}
+              <path d="M12 56h40v3H12z" />
+              <path d="M16 50h32v4H16z" />
+              <path d="M20 42h24v6H20z" />
+              <path d="M24 34h16v6H24z" />
+              <path d="M27 26h10v6H27z" />
+              <path d="M29 18h6v6h-6z" />
+              <path d="M31 10h2v6h-2z" />
+              <path d="M32 4l-2 4h4z" />
+              {/* Sayap candi bentar kiri & kanan */}
+              <path d="M8 56V38l6-6v24H8z" />
+              <path d="M56 56V38l-6-6v24h6z" />
+            </svg>
+
+            {/* Konten Kartu Piodalan */}
+            <div className="relative z-10 flex flex-col justify-between min-h-[110px] sm:min-h-[120px] space-y-4">
+              {/* Baris Atas: Tanggal, Wewaran, Hari Raya, dan Kotak Counter */}
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                <div className="space-y-1">
+                  {/* Eyebrow Label Sesuai Standar AGENTS.md */}
+                  <span className="text-[11px] font-extrabold text-[#0d9488] uppercase tracking-widest block">
+                    AGENDA PIODALAN
                   </span>
-                  <span className="text-[11px] font-extrabold uppercase tracking-widest text-slate-400 block mt-0.5">
-                    {schedule.dateBadge.month}
+
+                  {/* Judul Tanggal Utama Masehi */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-xl sm:text-2xl font-extrabold text-[#0f172a] tracking-tight tabular-nums">
+                      {day.formattedDate}
+                    </h4>
+
+                    {/* Pill Hari Raya (Purnama/Tilem/Rahinan) */}
+                    {day.hariRaya && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 text-[10px] font-bold tracking-wide">
+                        {day.hariRaya}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Subtitle Wewaran & Sasih Penanggalan Bali */}
+                  <p className="text-xs sm:text-sm font-semibold text-slate-600 flex items-center gap-2 flex-wrap">
+                    <span className="text-teal-800 font-bold">{day.wewaran}</span>
+                    {day.sasih && (
+                      <>
+                        <span className="text-slate-300">·</span>
+                        <span className="text-xs text-slate-500 font-medium">
+                          Sasih {day.sasih}
+                        </span>
+                      </>
+                    )}
+                  </p>
+                </div>
+
+                {/* Kotak Metrik Jumlah Pura Kanan (Stat Counter Box AGENTS.md 4.3) */}
+                <div className="hidden sm:flex bg-[#e6f7f5] border border-[#ccf0ea] rounded-xl px-4 py-2 text-center min-w-[110px] shrink-0 flex-col justify-center">
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">
+                    TOTAL PURA
+                  </span>
+                  <span className="text-xl sm:text-2xl font-extrabold text-[#0f172a] tabular-nums tracking-tight block my-0.5">
+                    {day.totalPura}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-medium block">
+                    lokasi perayaan
                   </span>
                 </div>
               </div>
 
-              {/* Kolom 2: Nama Pura, Kategori, & Lokasi */}
-              <div className="sm:col-span-5 space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="text-sm sm:text-base font-extrabold text-[#0f172a] group-hover:text-teal-800 transition-colors">
-                    {schedule.puraName}
-                  </h4>
-                  {schedule.puraType && (
-                    <span
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold inline-block shrink-0 ${getPuraTypeBadgeStyle(
-                        schedule.puraType
-                      )}`}
-                    >
-                      {schedule.puraType}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span className="line-clamp-1">{schedule.location}</span>
-                </div>
-              </div>
-
-              {/* Kolom 3: Penanggalan Wewaran & Siklus Pawukon */}
-              <div className="sm:col-span-3 space-y-0.5">
+              {/* Baris Bawah: Dua Tombol Aksi Baku (List Pura & Detail Tanggal) */}
+              <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap pt-1">
+                {/* Tombol 1: List Pura (Membuka Level 2 - Primary Button AGENTS.md 4.4) */}
                 <button
                   type="button"
-                  onClick={() => onOpenScheduleDetail(schedule, 'wariga')}
-                  className="text-xs sm:text-sm font-bold text-slate-800 hover:text-teal-700 text-left transition-colors cursor-pointer block"
-                  title="Klik untuk melihat Detail Wariga lengkap"
+                  onClick={() => onOpenPuraList(day)}
+                  className="h-10 sm:h-11 px-4 sm:px-5 rounded-xl bg-[#0e9f90] hover:bg-[#0c8a7d] active:bg-[#0a756a] text-white font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-98 cursor-pointer inline-flex items-center gap-2 [touch-action:manipulation]"
                 >
-                  {schedule.penanggalan}
-                </button>
-                <span className="text-[11px] text-slate-400 font-medium block">
-                  {schedule.cycleInfo}
-                </span>
-              </div>
-
-              {/* Kolom 4: Tombol Aksi (Membuka Modal Detail 2 Section) */}
-              <div className="sm:col-span-2 flex items-center justify-start sm:justify-end gap-2 pt-2 sm:pt-0">
-                {/* Tombol Pintas: Detail Wariga (Section 1) */}
-                <button
-                  type="button"
-                  onClick={() => onOpenScheduleDetail(schedule, 'wariga')}
-                  title="Lihat Detail Wariga (Gambar 1 & 2)"
-                  className="p-2 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50/80 transition-colors cursor-pointer hidden lg:inline-flex"
-                >
-                  <Sparkles className="w-4 h-4" />
+                  <Landmark className="w-4 h-4 text-white shrink-0" />
+                  <span>List Pura ({day.totalPura})</span>
                 </button>
 
-                {/* Tombol Primer: Detail (Membuka Modal Terpadu) */}
+                {/* Tombol 2: Detail Tanggal (Membuka Wariga 15 Dimensi - Secondary Button AGENTS.md 4.4) */}
                 <button
                   type="button"
-                  onClick={() => onOpenScheduleDetail(schedule, 'pura')}
-                  className="h-9 px-4 rounded-xl border border-slate-200 hover:border-teal-500/40 bg-white hover:bg-teal-50/50 active:bg-teal-100/50 text-teal-800 font-bold text-xs sm:text-sm transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-2xs [touch-action:manipulation]"
+                  onClick={() => onOpenDayWariga(day.dateStr)}
+                  className="h-10 sm:h-11 px-4 sm:px-5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 font-bold text-xs sm:text-sm transition-all active:scale-98 cursor-pointer inline-flex items-center gap-2 [touch-action:manipulation]"
                 >
-                  <span>Detail</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-teal-600" />
+                  <CalendarDays className="w-4 h-4 text-[#0e9f90] shrink-0" />
+                  <span>Detail Tanggal</span>
                 </button>
               </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
 
       {/* ==================================================================== */}
-      {/* D. PAGINASI BERTAHAP: TOMBOL TAMPILKAN LAINNYA                        */}
+      {/* C. TOMBOL PAGINASI BERTAHAP ('TAMPILKAN LAINNYA')                     */}
       {/* ==================================================================== */}
       {remainingCount > 0 && (
-        <div className="pt-2">
+        <div className="pt-2 text-center">
           <button
             type="button"
             onClick={handleLoadMore}
-            className="w-full py-3.5 rounded-xl bg-slate-50 hover:bg-slate-100 active:bg-slate-200/80 border border-slate-200/80 text-xs sm:text-sm font-bold text-slate-700 hover:text-[#0f172a] transition-all cursor-pointer flex items-center justify-center gap-2 [touch-action:manipulation]"
+            className="w-full sm:w-auto h-11 px-7 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 font-bold text-xs sm:text-sm transition-all active:scale-98 cursor-pointer shadow-2xs inline-flex items-center justify-center gap-2 [touch-action:manipulation]"
           >
-            <span>Tampilkan {remainingCount} jadwal lainnya</span>
+            <Sparkles className="w-4 h-4 text-[#0e9f90]" />
+            <span>Tampilkan {Math.min(remainingCount, LOAD_MORE_STEP)} agenda lainnya</span>
+            <span className="text-slate-400 text-xs font-semibold tabular-nums">
+              ({remainingCount} tersisa)
+            </span>
           </button>
         </div>
       )}

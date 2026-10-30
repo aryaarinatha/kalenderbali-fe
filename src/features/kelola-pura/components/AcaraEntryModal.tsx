@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { CreateAcaraPayload } from '../types/kelolaPura.types';
 import { useAcaraMutations } from '../hooks/useKelolaPura';
+import { getTodayWITA } from '../utils/kelolaPuraUtils';
 import { useAlertStore } from '@/stores/useAlertStore';
 
 /**
@@ -48,10 +49,10 @@ export const AcaraEntryModal: React.FC<AcaraEntryModalProps> = ({
   const { showAlert } = useAlertStore();
   const { createAcara, isCreating } = useAcaraMutations(piodalanId);
 
-  // State Formulir
+  // State Formulir (Tanggal diinisialisasi ke tanggal piodalan atau hari ini zona WITA)
   const [name, setName] = useState<string>('');
-  const [eventDate, setEventDate] = useState<string>(
-    piodalanDate ? piodalanDate.slice(0, 10) : new Date().toISOString().slice(0, 10)
+  const [eventDate, setEventDate] = useState<string>(() =>
+    piodalanDate ? piodalanDate.slice(0, 10) : getTodayWITA()
   );
   const [eventTime, setEventTime] = useState<string>('09:00');
   const [levelId, setLevelId] = useState<number | ''>(2); // Default Madya (2)
@@ -63,7 +64,7 @@ export const AcaraEntryModal: React.FC<AcaraEntryModalProps> = ({
   if (prevDate !== piodalanDate) {
     setPrevDate(piodalanDate);
     setEventDate(
-      piodalanDate ? piodalanDate.slice(0, 10) : new Date().toISOString().slice(0, 10)
+      piodalanDate ? piodalanDate.slice(0, 10) : getTodayWITA()
     );
   }
 

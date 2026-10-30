@@ -282,25 +282,21 @@ export function determineHolidayBadgeVariant(namaHariRaya: string): 'gold' | 'mi
 }
 
 // ---------------------------------------------------------------------------
-// 6. Penarik Maksimal 7 Hari Raya pada Bulan yang Sedang Aktif di Kalender
+// 6. Penarik Maksimal 7 Hari Raya Terdekat (Lintas Bulan jika Diperlukan)
 // ---------------------------------------------------------------------------
 
 /**
- * Menyaring dan mengekstrak maksimal 7 hari raya terdekat yang berada pada
- * BULAN YANG AKTIF di Mini Kalender.
+ * Menyaring dan mengekstrak maksimal 7 hari raya terdekat kedepan.
  *
- * Aturan Filter (Sesuai Arahan Pengguna):
- *  1. Tanggal hari raya HARUS berada pada bulan & tahun aktif kalender (targetYear & targetMonth).
- *     Hari raya di bulan berikutnya TIDAK AKAN ditampilkan jika kalender belum berganti bulan.
- *  2. Jika kalender berada pada bulan berjalan (current month):
- *     Hanya menampilkan hari raya yang belum lewat (tanggal >= todayDateISO).
- *  3. Jika kalender berpindah ke bulan masa depan (future month):
- *     Menampilkan hari raya mulai dari awal bulan tersebut.
- *  4. Jika kalender berpindah ke bulan lampau (past month):
- *     Menampilkan hari raya pada bulan lampau tersebut.
- *  5. Maksimal mengambil hingga `limit` hari raya (default: 7).
+ * Aturan Filter:
+ *  1. Jika berada pada bulan berjalan (current month):
+ *     Mulai dari tanggal hari ini (todayDateISO) kedepan.
+ *  2. Jika kalender berpindah ke bulan lain (masa depan atau lampau):
+ *     Mulai dari tanggal 1 bulan tersebut kedepan.
+ *  3. Mengambil hingga `limit` hari raya (default: 7) secara berurutan,
+ *     meskipun melewati batas bulan aktif (misal dari akhir Oktober berlanjut ke November).
  *
- * @param allDays Array 365/366 hari kalender dari backend Go
+ * @param allDays Array hari kalender dari backend Go
  * @param todayDateISO Tanggal hari ini zona WITA ("YYYY-MM-DD")
  * @param targetYear Tahun kalender yang sedang aktif ditampilkan
  * @param targetMonth Bulan kalender yang sedang aktif ditampilkan (1 - 12)
@@ -314,24 +310,36 @@ export function extractTopUpcomingHariRaya(
   limit: number = 7
 ): UpcomingHariRayaItem[] {
   const upcomingItems: UpcomingHariRayaItem[] = [];
-  const targetMonthPrefix = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
   const [todayYear, todayMonth] = todayDateISO.split('-').map(Number);
 
   // Evaluasi apakah bulan yang sedang dilihat adalah bulan hari ini
   const isCurrentMonth = targetYear === todayYear && targetMonth === todayMonth;
 
+  // Tentukan tanggal awal pencarian:
+  // - Jika berada pada bulan berjalan: mulai dari tanggal hari ini (todayDateISO)
+  // - Jika melihat bulan lain: mulai dari tanggal 1 bulan tersebut
+  const startDateISO = isCurrentMonth
+    ? todayDateISO
+    : `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
+
+  // Hilangkan duplikasi dan urutkan hari kalender secara kronologis menaik
+  const uniqueDaysMap = new Map<string, KalenderHarian>();
   for (const day of allDays) {
-    // 1. KUNCI BULAN AKTIF: Hari raya wajib berada di dalam bulan aktif kalender
-    if (!day.tanggal.startsWith(targetMonthPrefix)) {
+    if (day?.tanggal && !uniqueDaysMap.has(day.tanggal)) {
+      uniqueDaysMap.set(day.tanggal, day);
+    }
+  }
+  const sortedDays = Array.from(uniqueDaysMap.values()).sort((a, b) =>
+    a.tanggal.localeCompare(b.tanggal)
+  );
+
+  for (const day of sortedDays) {
+    // Lewati tanggal sebelum tanggal awal pencarian
+    if (day.tanggal < startDateISO) {
       continue;
     }
 
-    // 2. KUNCI HARI INI: Jika di bulan berjalan, hanya tampilkan agenda hari ini dan kedepan
-    if (isCurrentMonth && day.tanggal < todayDateISO) {
-      continue;
-    }
-
-    // 3. Periksa apakah hari tersebut memiliki data hari raya
+    // Periksa apakah hari tersebut memiliki data hari raya
     if (day.hari_raya && day.hari_raya.length > 0) {
       const daysDiff = computeDaysDifference(day.tanggal, todayDateISO);
       const [, monthStr, dayStr] = day.tanggal.split('-');

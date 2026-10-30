@@ -1,4 +1,5 @@
-import type { CalendarGridDay, KalenderHarian } from '../types/kalender.types';
+import type { CalendarGridDay, KalenderHarian, PiodalanTerdekatItem } from '../types/kalender.types';
+import type { PuraBackendItem } from '@/features/piodalan/types/piodalan.types';
 
 /**
  * ============================================================================
@@ -449,4 +450,217 @@ export function exportHariRayaToICS(
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+// ============================================================================
+// 8. MESIN PENCOCOKAN PIODALAN KALENDER (Pawukon 210 Hari & Sasih Candra)
+// ============================================================================
+
+/**
+ * Normalisasi string nama wewaran/sasih agar toleran terhadap variasi kapitalisasi dan penulisan ejaan.
+ */
+export const normalizeCalendarString = (s?: string | null): string => {
+  if (!s) return '';
+  const lower = s.toLowerCase().trim();
+  if (lower === 'kedasa') return 'kadasa';
+  if (lower === 'ketiga') return 'katiga';
+  if (lower === 'kelima') return 'kalima';
+  if (lower === 'kenam') return 'kanem';
+  if (lower === 'kepitu') return 'kapitu';
+  if (lower === 'kesanga') return 'kasanga';
+  if (lower === 'dunggulan') return 'dungulan';
+  if (lower === 'kulawu' || lower === 'kelawu') return 'klawu';
+  if (lower === 'klurut') return 'krulut';
+  return lower;
+};
+
+/**
+ * Bobot prioritas kategori pura untuk penentuan urutan nama pura terkemuka:
+ * Kahyangan Jagat / Sad Kahyangan (1) > Dang Kahyangan (2) > Kahyangan Tiga (3) > Swagina (4) > Kawitan (5) > Lainnya (6).
+ */
+export const getPuraPriorityScore = (type?: string | null): number => {
+  const t = (type || '').toLowerCase();
+  if (t.includes('kahyangan jagat') || t.includes('sad kahyangan')) return 1;
+  if (t.includes('dang kahyangan')) return 2;
+  if (t.includes('kahyangan tiga')) return 3;
+  if (t.includes('swagina')) return 4;
+  if (t.includes('kawitan')) return 5;
+  return 6;
+};
+
+/**
+ * Mencocokkan daftar pura yang melangsungkan piodalan pada suatu hari kalender tertentu.
+ * Menggunakan aturan Pawukon (210 hari) dan Sasih (Candra) dengan toleransi variasi ejaan.
+ */
+export function matchPurasForDay(
+  day: KalenderHarian,
+  purasList: PuraBackendItem[]
+): PuraBackendItem[] {
+  if (!day || !Array.isArray(purasList) || purasList.length === 0) return [];
+
+  const dWuku = normalizeCalendarString(day.wewaran?.wuku?.nama);
+  const dSapta = normalizeCalendarString(day.wewaran?.saptawara?.nama);
+  const dPanca = normalizeCalendarString(day.wewaran?.pancawara?.nama);
+  const dSasih = normalizeCalendarString(day.sasih?.nama_sasih);
+  const dPT = normalizeCalendarString(day.pengalantaka?.purnama_tilem);
+
+  const matched: PuraBackendItem[] = [];
+
+  for (const p of purasList) {
+    const bench = (p.benchmark || '').toLowerCase();
+
+    // 1. Berbasis Pawukon (siklus 210 hari)
+    if (bench.includes('pawukon') || (!bench.includes('sasih') && p.wuku)) {
+      const pWuku = normalizeCalendarString(p.wuku);
+      const pSapta = normalizeCalendarString(p.saptawara);
+      const pPanca = normalizeCalendarString(p.pancawara);
+      if (pWuku === dWuku && pSapta === dSapta && pPanca === dPanca) {
+        matched.push(p);
+        continue;
+      }
+    }
+
+    // 2. Berbasis Sasih (Candra)
+    if (bench.includes('sasih') || p.sasih) {
+      const pSasih = normalizeCalendarString(p.sasih);
+      const pPT = normalizeCalendarString(p.purnama_tilem);
+      if (pSasih === dSasih && pPT === dPT && (dPT === 'purnama' || dPT === 'tilem')) {
+        matched.push(p);
+      }
+    }
+  }
+
+  // Urutkan berdasarkan prioritas kesakralan pura terkemuka
+  matched.sort((a, b) => {
+    const prioA = getPuraPriorityScore(a.type);
+    const prioB = getPuraPriorityScore(b.type);
+    if (prioA !== prioB) return prioA - prioB;
+    return a.name.localeCompare(b.name, 'id');
+  });
+
+  return matched;
+}
+
+/**
+ * Mengekstrak ringkasan agenda piodalan seluruh pura dalam satu bulan kalender aktif.
+ * Mengembalikan total pura yang melangsungkan upacara pada bulan tersebut dan hingga 3 piodalan terdekat.
+ * 
+ * Aturan Piodalan Terdekat:
+ * 1. Hanya menampilkan piodalan yang belum lewat dari hari ini (dateStr >= todayISO).
+ * 2. Menampung hingga 3 agenda piodalan terdekat.
+ * 3. Jika sisa agenda piodalan di bulan aktif kurang dari 3, dapat mengambil piodalan terdekat
+ *    dari bulan berikutnya (lookahead) dengan indikator nama bulan, selama tidak lewat dari hari ini.
+ */
+export function extractMonthPiodalanSummary(
+  monthDays: KalenderHarian[],
+  purasList: PuraBackendItem[],
+  todayISO?: string,
+  allYearDays?: KalenderHarian[]
+): {
+  totalPuras: number;
+  upcomingItems: PiodalanTerdekatItem[];
+} {
+  if (
+    !Array.isArray(monthDays) ||
+    monthDays.length === 0 ||
+    !Array.isArray(purasList) ||
+    purasList.length === 0
+  ) {
+    return { totalPuras: 0, upcomingItems: [] };
+  }
+
+  const monthShortNames = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+    'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'
+  ];
+
+  // Helper untuk merangkai wukuTitle
+  const getDayWukuTitle = (day: KalenderHarian): string => {
+    if (day.wewaran?.saptawara?.nama && day.wewaran?.pancawara?.nama && day.wewaran?.wuku?.nama) {
+      return `${day.wewaran.saptawara.nama} ${day.wewaran.pancawara.nama} ${day.wewaran.wuku.nama}`;
+    }
+    if (day.hari_raya && day.hari_raya.length > 0) {
+      return day.hari_raya[0].nama;
+    }
+    return day.sasih?.nama_sasih ? `Sasih ${day.sasih.nama_sasih}` : 'Piodalan Pura';
+  };
+
+  // 1. Akumulasi total lokasi piodalan pada bulan aktif ini
+  let totalPuras = 0;
+  const daysWithPiodalanInCurrentMonth: {
+    dateStr: string;
+    dayNum: string;
+    wukuTitle: string;
+    count: number;
+  }[] = [];
+
+  for (const day of monthDays) {
+    const matched = matchPurasForDay(day, purasList);
+    if (matched.length > 0) {
+      totalPuras += matched.length;
+      const dayNum = day.tanggal.split('-')[2] || '01';
+
+      daysWithPiodalanInCurrentMonth.push({
+        dateStr: day.tanggal,
+        dayNum,
+        wukuTitle: getDayWukuTitle(day),
+        count: matched.length,
+      });
+    }
+  }
+
+  // 2. Ambil piodalan terdekat di bulan aktif yang BELUM LEWAT (dateStr >= todayISO)
+  const upcomingItems: PiodalanTerdekatItem[] = [];
+  const currentMonthNum = monthDays[0]?.tanggal
+    ? parseInt(monthDays[0].tanggal.split('-')[1], 10)
+    : 1;
+
+  const eligibleInCurrentMonth = todayISO
+    ? daysWithPiodalanInCurrentMonth.filter((d) => d.dateStr >= todayISO)
+    : daysWithPiodalanInCurrentMonth;
+
+  for (const d of eligibleInCurrentMonth) {
+    if (upcomingItems.length < 3) {
+      upcomingItems.push({
+        id: `up-${d.dateStr}`,
+        dayNumber: d.dayNum,
+        wukuTitle: d.wukuTitle,
+        puraCountText: `${d.count} pura`,
+        dateStr: d.dateStr,
+      });
+    }
+  }
+
+  // 3. Jika slot kartu (maks 3) belum penuh dan terdapat data hari-hari berikutnya (lookahead ke bulan depan):
+  // Tambahkan piodalan terdekat dari bulan-bulan mendatang selama dateStr >= todayISO
+  if (upcomingItems.length < 3 && Array.isArray(allYearDays) && allYearDays.length > 0) {
+    const lastDayCurrentMonth = monthDays[monthDays.length - 1]?.tanggal || '';
+
+    // Ambil hari-hari setelah bulan aktif ini yang juga >= todayISO
+    const subsequentDays = allYearDays
+      .filter((day) => day.tanggal > lastDayCurrentMonth && (!todayISO || day.tanggal >= todayISO))
+      .sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+
+    for (const day of subsequentDays) {
+      if (upcomingItems.length >= 3) break;
+
+      const matched = matchPurasForDay(day, purasList);
+      if (matched.length > 0) {
+        const dayNum = day.tanggal.split('-')[2] || '01';
+        const dayMonthNum = parseInt(day.tanggal.split('-')[1], 10);
+        const monthLabel = monthShortNames[dayMonthNum - 1] || '';
+        const monthSuffix = dayMonthNum !== currentMonthNum ? ` · ${monthLabel}` : '';
+
+        upcomingItems.push({
+          id: `up-${day.tanggal}`,
+          dayNumber: dayNum,
+          wukuTitle: getDayWukuTitle(day),
+          puraCountText: `${matched.length} pura${monthSuffix}`,
+          dateStr: day.tanggal,
+        });
+      }
+    }
+  }
+
+  return { totalPuras, upcomingItems };
 }

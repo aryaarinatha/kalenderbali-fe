@@ -36,7 +36,6 @@ import type {
 } from '../types/dashboard.types';
 import {
   DEFAULT_DEWASA_AYU,
-  DEFAULT_PIODALAN_LIST,
 } from '../data/dashboardMockData';
 import {
   extractTopUpcomingHariRaya,
@@ -80,6 +79,9 @@ export function useDashboardData() {
   // (Zero-Loading: jika calendarYear === todayParsed.year, TanStack Query langsung
   // menggunakan instance query yang sama di memori RAM).
   const { kalenderData: todayYearCalendarDays = [] } = useKalenderTahun(todayParsed.year);
+
+  // Konsumsi data tahun berikutnya untuk kesinambungan agenda melewati batas pergantian tahun
+  const { kalenderData: nextCalendarYearDays = [] } = useKalenderTahun(calendarYear + 1);
 
   // Konsumsi master data 461 pura resmi dari Backend Go (staleTime 24 jam di RAM)
   const { data: purasList = [] } = useAllPuras();
@@ -176,17 +178,24 @@ export function useDashboardData() {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // 7. Penarikan Maksimal 7 Hari Raya pada Bulan yang Sedang Aktif di Kalender
+  // 7. Penarikan Maksimal 7 Hari Raya Terdekat (Lintas Bulan jika Diperlukan)
   // ---------------------------------------------------------------------------
+  const holidaysDaysPool = useMemo(() => {
+    if (nextCalendarYearDays.length > 0) {
+      return [...rawCalendarDays, ...nextCalendarYearDays];
+    }
+    return rawCalendarDays;
+  }, [rawCalendarDays, nextCalendarYearDays]);
+
   const upcomingHariRaya: UpcomingHariRayaItem[] = useMemo(() => {
     return extractTopUpcomingHariRaya(
-      rawCalendarDays,
+      holidaysDaysPool,
       todayWITA,
       calendarYear,
       calendarMonth,
       7
     );
-  }, [rawCalendarDays, todayWITA, calendarYear, calendarMonth]);
+  }, [holidaysDaysPool, todayWITA, calendarYear, calendarMonth]);
 
   // ---------------------------------------------------------------------------
   // 8. Integrasi Data Dewasa Ayu Hari Ini & Piodalan Terdekat (Masing-masing 3 Item)
@@ -209,13 +218,8 @@ export function useDashboardData() {
     );
   }, [todayYearCalendarDays, rawCalendarDays, purasList, todayWITA, calendarYear, todayParsed.year]);
 
-  // Gunakan data real piodalan jika berhasil dimuat, atau fallback anggun ke DEFAULT_PIODALAN_LIST
-  const piodalan: PiodalanDashboardItem[] = useMemo(() => {
-    if (realUpcomingPiodalan.length > 0) {
-      return realUpcomingPiodalan;
-    }
-    return DEFAULT_PIODALAN_LIST;
-  }, [realUpcomingPiodalan]);
+  // Seluruh data piodalan di dashboard 100% menggunakan data real hasil kalkulasi master pura resmi backend Go
+  const piodalan: PiodalanDashboardItem[] = realUpcomingPiodalan;
 
   return {
     // Data Hero Hari Ini

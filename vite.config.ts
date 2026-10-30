@@ -16,9 +16,15 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
-    // Proxy for backend API
+    // Proxy for backend API & static media assets
     proxy: {
       '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false,
+      },
+      // Proxy untuk berkas gambar statis warta & pura yang dilayani oleh Backend Go
+      '/uploads': {
         target: 'http://localhost:8080',
         changeOrigin: true,
         secure: false,

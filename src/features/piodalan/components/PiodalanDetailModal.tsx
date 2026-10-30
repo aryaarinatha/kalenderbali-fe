@@ -2,22 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
-  Sparkles,
   ArrowRight,
-  Landmark,
-  MapPin,
-  ExternalLink,
-  Phone,
-  Calendar,
-  Clock,
-  User,
   Info,
 } from 'lucide-react';
-import type {
-  PiodalanScheduleItem,
-  PiodalanModalActiveSection,
-} from '../types/piodalan.types';
-import { useDayWariga, usePuraCeremonies } from '../hooks/usePiodalan';
+import type { PiodalanScheduleItem } from '../types/piodalan.types';
+import { useDayWariga } from '../hooks/usePiodalan';
 import {
   calculateIngkel,
   calculateNeptu,
@@ -25,36 +14,13 @@ import {
   WARIGA_FALLBACK_VALUES,
 } from '@/features/otonan/utils/warigaUtils';
 import { WarigaExplanationModal } from '@/features/otonan/components/WarigaExplanationModal';
-import { getPuraTypeBadgeStyle } from '../utils/piodalanUtils';
-
 
 /**
  * ==============================================================================
- * KOMPONEN: PiodalanDetailModal (Modal Dialog Pop-up 2 Section)
+ * PROPS: PiodalanDetailModal
  * ==============================================================================
- * Modal dialog terpadu yang memiliki 2 Section utama:
- *
- * 1. SECTION 1: 'Detail Wariga' (Sesuai Gambar 1 & 2):
- *    - Menampilkan tabel 15 dimensi penanggalan Wariga Bali lengkap:
- *      * Tahun Saka dan Sasih (Ekawara & Dwiwara)
- *      * Pengalantaka (Triwara & Caturwara)
- *      * Wewaran (Pancawara s.d. Dasawara, Wuku, Ingkel, Jejepan, Lintang)
- *      * Elemen Lainnya (Panca Sudha, Pangarasan, Rakam, Neptu, Zodiak, Pratiti)
- *    - Baris bertanda panah (→) dapat diklik untuk membuka penjelasan filosofisnya.
- *
- * 2. SECTION 2: 'Detail Pura & Acara':
- *    - Profil Pura (Kategori, Alamat, Tombol Google Maps, Telepon)
- *    - Rangkaian Acara & Jam:
- *      * Jika kontributor sudah mengisi: menampilkan susunan acara (Melasti, Puncak, dll).
- *      * Jika belum diisi kontributor: menampilkan Empty State santun & informatif.
- *
- * Menerapkan standar AGENTS.md:
- * - createPortal ke document.body (z-[100])
- * - Backdrop blur dengan tombol Escape listener
- * - Header gradient halus dengan tombol tutup X
- * ==============================================================================
+ * Antarmuka properti untuk modal dialog rincian Wariga penanggalan Bali.
  */
-
 interface PiodalanDetailModalProps {
   /** Status apakah modal sedang terbuka */
   isOpen: boolean;
@@ -62,13 +28,11 @@ interface PiodalanDetailModalProps {
   /** Callback ketika modal ditutup */
   onClose: () => void;
 
-  /** Data jadwal piodalan yang dipilih */
+  /** Data jadwal piodalan / tanggal yang dipilih */
   schedule: PiodalanScheduleItem | null;
-
-  /** Section awal yang ingin dibuka ('wariga' atau 'pura') */
-  initialSection?: PiodalanModalActiveSection;
 }
 
+/** Tipe data baris tabel wariga */
 interface WarigaRowData {
   label: string;
   value: string | number;
@@ -77,26 +41,35 @@ interface WarigaRowData {
   categoryName?: string;
 }
 
+/**
+ * ==============================================================================
+ * KOMPONEN: PiodalanDetailModal (Modal Dialog Rincian Wariga 15 Dimensi)
+ * ==============================================================================
+ * Sesuai Permintaan Pengguna:
+ * - Bagian tab "Detail Pura & Acara" telah DIHAPUS dari modal ini karena sudah dipusatkan
+ *   secara menyeluruh dan terpadu pada PiodalanPuraListModal (Level 3).
+ * - Modal ini secara eksklusif berfokus menyajikan 15 dimensi penanggalan Wariga Bali
+ *   lengkap (Wewaran Ekawara s.d. Dasawara, Pengalantaka, Elemen Lainnya, Neptu, Zodiak,
+ *   Pratiti, dan Tahun Saka/Sasih).
+ * - Baris bertanda panah (→) dapat diklik untuk membuka sub-modal penjelasan makna filosofisnya.
+ *
+ * Standar Desain AGENTS.md (Section 4.7):
+ * - createPortal ke document.body (z-[100])
+ * - Backdrop blur dengan tombol Escape listener
+ * - Header gradient halus (from-teal-50/70 via-slate-50/40 to-emerald-50/40)
+ * ==============================================================================
+ */
 export const PiodalanDetailModal: React.FC<PiodalanDetailModalProps> = ({
   isOpen,
   onClose,
   schedule,
-  initialSection = 'pura',
 }) => {
-  // State Section yang sedang aktif di dalam modal (Tab 1: Wariga vs Tab 2: Pura)
-  const [activeSection, setActiveSection] = useState<PiodalanModalActiveSection>(initialSection);
-
   // State sub-modal penjelasan makna wariga (saat panah → diklik)
   const [explanationTarget, setExplanationTarget] = useState<{
     categoryCode: string;
     categoryName: string;
     itemName: string;
   } | null>(null);
-
-  // Selaraskan activeSection ketika initialSection dari luar berganti
-  useEffect(() => {
-    setActiveSection(initialSection);
-  }, [initialSection, isOpen]);
 
   // Listener tombol Escape untuk menutup modal
   useEffect(() => {
@@ -118,11 +91,8 @@ export const PiodalanDetailModal: React.FC<PiodalanDetailModalProps> = ({
     };
   }, [isOpen, onClose, explanationTarget]);
 
-  // 1. Query data penanggalan harian kalender Go untuk Section 1 (Detail Wariga)
+  // Query data penanggalan harian kalender Go untuk Detail Wariga 15 Dimensi
   const { data: dayWariga } = useDayWariga(schedule?.dateStr);
-
-  // 2. Query susunan acara kontributor untuk Section 2 (Detail Pura & Acara)
-  const { data: ceremoniesData } = usePuraCeremonies(schedule?.puraId);
 
   if (!isOpen || !schedule) return null;
 
@@ -256,8 +226,8 @@ export const PiodalanDetailModal: React.FC<PiodalanDetailModalProps> = ({
   ];
 
   const pengalantakaRows: WarigaRowData[] = [
-    { label: 'Pengalantaka', value: p?.pengalantaka || p?.status || 'Pangelong' },
-    { label: 'Angka Pengalantaka', value: p?.penanggal_1 ?? p?.angka ?? 9 },
+    { label: 'Pengalantaka', value: p?.pengalantaka || 'Pangelong' },
+    { label: 'Angka Pengalantaka', value: p?.penanggal_1 ?? 9 },
   ];
 
   const tahunSakaSasihRows: WarigaRowData[] = [
@@ -323,7 +293,6 @@ export const PiodalanDetailModal: React.FC<PiodalanDetailModalProps> = ({
     );
   };
 
-
   const modalNode = (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3.5 sm:p-6 overscroll-contain animate-in fade-in duration-150">
       {/* 1. Backdrop Gelap dengan Blur Halus */}
@@ -339,21 +308,21 @@ export const PiodalanDetailModal: React.FC<PiodalanDetailModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* ================================================================== */}
-        {/* HEADER MODAL: JUDUL, TANGGAL & TOMBOL TUTUP X                     */}
+        {/* HEADER MODAL: JUDUL TANGGAL, WEWARAN & TOMBOL TUTUP X             */}
         {/* ================================================================== */}
         <div className="p-5 sm:p-6 bg-gradient-to-r from-teal-50/70 via-slate-50/40 to-emerald-50/40 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="w-1.5 h-3.5 bg-[#0e9f90] rounded-full inline-block" />
               <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#0d9488]">
-                Informasi Piodalan
+                Detail Wariga & Penanggalan
               </span>
             </div>
-            <h3 className="text-xl sm:text-2xl font-extrabold text-[#0f172a] tracking-tight">
-              {schedule.puraName}
+            <h3 className="text-xl sm:text-2xl font-extrabold text-[#0f172a] tracking-tight tabular-nums">
+              {schedule.formattedDate}
             </h3>
             <p className="text-xs sm:text-sm text-slate-500 font-semibold">
-              {schedule.dayName}, {schedule.formattedDate} ·{' '}
+              {schedule.dayName} ·{' '}
               <span className="text-teal-700 font-bold">{schedule.penanggalan}</span>
             </p>
           </div>
@@ -369,208 +338,46 @@ export const PiodalanDetailModal: React.FC<PiodalanDetailModalProps> = ({
         </div>
 
         {/* ================================================================== */}
-        {/* SWITCHER SECTION: TAB 1 (DETAIL WARIGA) VS TAB 2 (DETAIL PURA)     */}
+        {/* BODY MODAL: TABEL 15 DIMENSI PENANGGALAN WARIGA LENGKAP            */}
         {/* ================================================================== */}
-        <div className="px-5 sm:px-6 pt-3 pb-2 border-b border-slate-100 bg-white shrink-0">
-          <div className="p-1 bg-slate-100 rounded-xl flex gap-1">
-            {/* Tab Section 1: Detail Wariga */}
-            <button
-              type="button"
-              onClick={() => setActiveSection('wariga')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer inline-flex items-center justify-center gap-2 ${
-                activeSection === 'wariga'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Sparkles className="w-4 h-4 text-[#0e9f90]" />
-              <span>Detail Wariga</span>
-            </button>
+        <div className="overflow-y-auto p-5 sm:p-6 space-y-5">
+          {/* Petunjuk Interaktif Baris Panah */}
+          <div className="p-3 bg-teal-50/60 border border-teal-200/50 rounded-xl flex items-center gap-2.5 text-xs text-teal-800">
+            <Info className="w-4 h-4 shrink-0 text-teal-600" />
+            <span>
+              Klik baris dengan tanda panah (<span className="font-bold">→</span>) untuk
+              melihat penjelasan filosofis serta maknanya.
+            </span>
+          </div>
 
-            {/* Tab Section 2: Detail Pura & Rangkaian Acara */}
-            <button
-              type="button"
-              onClick={() => setActiveSection('pura')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer inline-flex items-center justify-center gap-2 ${
-                activeSection === 'pura'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Landmark className="w-4 h-4 text-[#0e9f90]" />
-              <span>Detail Pura & Acara</span>
-            </button>
+          {/* Kotak Kontainer Tabel Wariga */}
+          <div className="bg-[#f8fafc] rounded-xl border border-slate-200/70 overflow-hidden shadow-2xs divide-y divide-slate-100">
+            {/* 1. Kelompok Wewaran */}
+            {renderSectionHeader('Wewaran (Siklus Hari)')}
+            <div className="bg-white">{wewaranRows.map(renderRow)}</div>
+
+            {/* 2. Kelompok Pengalantaka */}
+            {renderSectionHeader('Pengalantaka (Siklus Bulan)')}
+            <div className="bg-white">{pengalantakaRows.map(renderRow)}</div>
+
+            {/* 3. Kelompok Elemen Lainnya */}
+            {renderSectionHeader('Elemen Penanggalan Lainnya')}
+            <div className="bg-white">{elemenLainnyaRows.map(renderRow)}</div>
+
+            {/* 4. Kelompok Tahun Saka & Sasih */}
+            {renderSectionHeader('Tahun Saka & Sasih')}
+            <div className="bg-white">{tahunSakaSasihRows.map(renderRow)}</div>
           </div>
         </div>
 
         {/* ================================================================== */}
-        {/* BODY MODAL: KONTEN BERGANTIAN SESUAI SECTION AKTIF                 */}
+        {/* FOOTER MODAL: TOMBOL TUTUP UTAMA TEAL                             */}
         {/* ================================================================== */}
-        <div className="overflow-y-auto p-5 sm:p-6 space-y-6">
-          {/* ---------------------------------------------------------------- */}
-          {/* SECTION 1: DETAIL WARIGA LENGKAP (PERSIS STANDAR KALENDER BALI)  */}
-          {/* ---------------------------------------------------------------- */}
-          {activeSection === 'wariga' && (
-            <div className="space-y-4 animate-in fade-in duration-150">
-              {/* Petunjuk Interaktif Baris Panah */}
-              <div className="p-3 bg-teal-50/60 border border-teal-200/50 rounded-xl flex items-center gap-2.5 text-xs text-teal-800">
-                <Info className="w-4 h-4 shrink-0 text-teal-600" />
-                <p>
-                  Klik baris bertanda panah (<span className="font-bold text-teal-700">→</span>) untuk
-                  membaca penjelasan filosofis dan makna watak elemen wariga.
-                </p>
-              </div>
-
-              {/* Kotak Kontainer Tabel Wariga Terpadu (Standar Otonan & Kalender Bali) */}
-              <div className="bg-[#f8fafc] border border-slate-200/80 rounded-2xl overflow-hidden text-left shadow-2xs">
-                {/* Seksi 1: Wewaran */}
-                {renderSectionHeader('Wewaran')}
-                {wewaranRows.map(renderRow)}
-
-                {/* Seksi 2: Elemen Lainnya */}
-                {renderSectionHeader('Elemen Lainnya')}
-                {elemenLainnyaRows.map(renderRow)}
-
-                {/* Seksi 3: Pengalantaka */}
-                {renderSectionHeader('Pengalantaka')}
-                {pengalantakaRows.map(renderRow)}
-
-                {/* Seksi 4: Tahun Saka dan Sasih */}
-                {renderSectionHeader('Tahun Saka dan Sasih')}
-                {tahunSakaSasihRows.map(renderRow)}
-              </div>
-            </div>
-          )}
-
-          {/* ---------------------------------------------------------------- */}
-          {/* SECTION 2: DETAIL PURA & RANGKAIAN ACARA (KONTRIBUSI KONTRIBUTOR) */}
-          {/* ---------------------------------------------------------------- */}
-          {activeSection === 'pura' && (
-            <div className="space-y-5 animate-in fade-in duration-150">
-              {/* Kartu Profil Pura */}
-              <div className="bg-[#f8fafc] rounded-xl border border-slate-200/70 p-4 sm:p-5 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block mb-1">
-                      Kategori Pura
-                    </span>
-                    <span
-                      className={`px-2.5 py-1 rounded-md font-bold text-xs inline-block ${getPuraTypeBadgeStyle(
-                        schedule.puraType
-                      )}`}
-                    >
-                      {schedule.puraType || 'Kahyangan Jagat'}
-                    </span>
-                  </div>
-
-                  {/* Tautan Google Maps jika tersedia */}
-                  {schedule.mapUrl && (
-                    <a
-                      href={schedule.mapUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-teal-500/40 text-xs font-bold text-slate-700 hover:text-teal-700 transition-all shadow-2xs"
-                    >
-                      <span>Buka di Peta</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  )}
-                </div>
-
-                {/* Alamat Lengkap */}
-                <div className="space-y-1 pt-1">
-                  <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest block">
-                    Alamat Lengkap
-                  </span>
-                  <div className="flex items-start gap-2 text-xs sm:text-sm text-slate-700 font-medium">
-                    <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                    <span>{schedule.fullAddress}</span>
-                  </div>
-                </div>
-
-                {/* Kontak Pengempon jika ada */}
-                {schedule.phone && (
-                  <div className="space-y-1 pt-1">
-                    <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest block">
-                      Kontak Pengelola
-                    </span>
-                    <div className="flex items-center gap-2 text-xs text-slate-700 font-medium">
-                      <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span>{schedule.phone}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Rangkaian Acara Piodalan & Jam Pelaksanaan */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">
-                    Rangkaian Acara Piodalan
-                  </h4>
-                  <span className="text-[11px] text-slate-400 font-medium">
-                    Data Kontributor
-                  </span>
-                </div>
-
-                {/* KONDISI A: Kontributor SUDAH menginput rangkaian acara */}
-                {ceremoniesData?.hasContributedData && ceremoniesData.acaras.length > 0 ? (
-                  <div className="bg-[#f8fafc] rounded-xl border border-slate-200/70 divide-y divide-slate-100 overflow-hidden">
-                    {ceremoniesData.acaras.map((acara, idx) => (
-                      <div key={acara.id || idx} className="p-4 space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <h5 className="text-sm font-bold text-[#0f172a]">{acara.name}</h5>
-                          {acara.ceremony_level && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200/70 text-slate-700">
-                              {acara.ceremony_level}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-slate-500 font-medium">
-                          <span className="flex items-center gap-1 text-teal-700 font-semibold">
-                            <Clock className="w-3.5 h-3.5" />
-                            {acara.event_at}
-                          </span>
-                          {acara.pic_name && (
-                            <span className="flex items-center gap-1">
-                              <User className="w-3.5 h-3.5" />
-                              PIC: {acara.pic_name} {acara.pic_phone ? `(${acara.pic_phone})` : ''}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  /* KONDISI B: Kontributor BELUM menginput (Empty State Jujur & Santun) */
-                  <div className="p-6 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center space-y-2">
-                    <Calendar className="w-8 h-8 text-slate-300 mx-auto" />
-                    <h5 className="text-xs sm:text-sm font-bold text-slate-700">
-                      Rangkaian acara belum tersedia
-                    </h5>
-                    <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                      Waktu pelaksanaan spesifik dan susunan tahapan upacara belum diunggah oleh pengelola atau kontributor pura ini.
-                    </p>
-                    <div className="pt-1">
-                      <span className="text-[11px] text-slate-400 font-medium block">
-                        Pelaksanaan puncak piodalan umumnya berlangsung pukul 08.00 s.d. 22.00 WITA mengikuti dresta desa setempat.
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ================================================================== */}
-        {/* FOOTER MODAL: TOMBOL TUTUP                                         */}
-        {/* ================================================================== */}
-        <div className="p-4 sm:p-5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-end shrink-0">
+        <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-end shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="h-10 px-5 rounded-xl bg-white hover:bg-slate-100 active:bg-slate-200 border border-slate-200 text-slate-700 font-bold text-xs sm:text-sm transition-all cursor-pointer [touch-action:manipulation]"
+            className="h-10 px-6 rounded-xl bg-[#0e9f90] hover:bg-[#0c8a7d] active:bg-[#0a756a] text-white font-bold text-xs sm:text-sm shadow-xs transition-all cursor-pointer [touch-action:manipulation]"
           >
             Tutup
           </button>
