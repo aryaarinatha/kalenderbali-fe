@@ -29,6 +29,14 @@ import WartaDetailPage from '@/features/warta/pages/WartaDetailPage';
 const KontakPage = lazy(() => import('@/features/kontak/pages/KontakPage'));
 import { KontakSkeleton } from '@/features/kontak/components/KontakSkeleton';
 
+// Import komponen halaman Wariga Personal dengan Route-Level Code Splitting (fe_strategy.md 8.12)
+const WarigaPersonalPage = lazy(() => import('@/features/wariga-personal/pages/WarigaPersonalPage'));
+import { WarigaPersonalSkeleton } from '@/features/wariga-personal/components/WarigaPersonalSkeleton';
+
+// Import komponen halaman Ramalan Sifat dengan Route-Level Code Splitting (fe_strategy.md 8.12)
+const RamalanSifatPage = lazy(() => import('@/features/ramalan-sifat/pages/RamalanSifatPage'));
+import { RamalanSifatSkeleton } from '@/features/ramalan-sifat/components/RamalanSifatSkeleton';
+
 // Import komponen-komponen halaman Manajemen Admin
 import AdminUserPage from '@/features/admin/pages/AdminUserPage';
 import AdminTransactionPage from '@/features/admin/pages/AdminTransactionPage';
@@ -86,6 +94,33 @@ export default function AppRoutes() {
 
           {/* Halaman Jadwal Hari Raya & Rahina Hindu Bali */}
           <Route path="hari-raya" element={<HariRayaPage />} />
+
+          {/* ==================================================================== */}
+          {/* HALAMAN WARIGA PERSONAL (EVALUASI KECOCOKAN HARI WETON KELAHIRAN)    */}
+          {/* ==================================================================== */}
+          <Route
+            path="wariga-personal"
+            element={
+              <Suspense fallback={<WarigaPersonalSkeleton />}>
+                <WarigaPersonalPage />
+              </Suspense>
+            }
+          />
+          <Route path="layanan/wariga-personal" element={<Navigate to="/wariga-personal" replace />} />
+
+          {/* ==================================================================== */}
+          {/* HALAMAN RAMALAN SIFAT (WATAK & KARAKTER PENANGGALAN BALI)           */}
+          {/* ==================================================================== */}
+          <Route
+            path="ramalan-sifat"
+            element={
+              <Suspense fallback={<RamalanSifatSkeleton />}>
+                <RamalanSifatPage />
+              </Suspense>
+            }
+          />
+          <Route path="layanan/ramalan-sifat" element={<Navigate to="/ramalan-sifat" replace />} />
+          <Route path="ramalan_sifat" element={<Navigate to="/ramalan-sifat" replace />} />
 
           {/* ==================================================================== */}
           {/* PLACEHOLDER FITUR LAINNYA (Mencegah 404 saat menu sidebar diklik)    */}

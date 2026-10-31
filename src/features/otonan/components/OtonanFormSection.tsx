@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, ChevronDown, RotateCcw } from 'lucide-react';
+import { AestheticDatePicker } from '@/components/ui/AestheticDatePicker';
 import type {
   OtonanSearchParams,
   OtonanSearchType,
@@ -66,9 +67,9 @@ export const OtonanFormSection: React.FC<OtonanFormSectionProps> = ({
     activeParams?.tipe_pencarian || 'tanggal_lahir'
   );
 
-  // Input mode tanggal lahir
+  // Input mode tanggal lahir (default kosong agar menampilkan placeholder "dd/mm/yyyy")
   const [birthDate, setBirthDate] = useState<string>(
-    activeParams?.tanggal_lahir || '1998-12-22'
+    activeParams?.tanggal_lahir || ''
   );
   const [birthTime, setBirthTime] = useState<'before_06' | 'after_06'>(
     activeParams?.sebelum_jam_6 ? 'before_06' : 'after_06'
@@ -305,7 +306,7 @@ export const OtonanFormSection: React.FC<OtonanFormSectionProps> = ({
           {/* =============================================================== */}
           {activeTab === 'tanggal_lahir' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4 items-end">
-              {/* Field 1: Tanggal Lahir (lg:col-span-4) */}
+              {/* Field 1: Tanggal Lahir (lg:col-span-4) dengan Date Picker Estetik */}
               <div className="lg:col-span-4 space-y-1.5">
                 <label
                   htmlFor="birth-date"
@@ -313,16 +314,13 @@ export const OtonanFormSection: React.FC<OtonanFormSectionProps> = ({
                 >
                   TANGGAL LAHIR
                 </label>
-                <div className="relative">
-                  <input
-                    id="birth-date"
-                    type="date"
-                    value={birthDate}
-                    onChange={(e) => setBirthDate(e.target.value)}
-                    required
-                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-[#0f172a] focus:outline-none focus:ring-2 focus:ring-[#0d9488]/20 focus:border-[#0d9488] transition-all cursor-pointer tabular-nums"
-                  />
-                </div>
+                <AestheticDatePicker
+                  id="birth-date"
+                  value={birthDate}
+                  onChange={(iso) => setBirthDate(iso)}
+                  placeholder="dd/mm/yyyy"
+                  required
+                />
               </div>
 
               {/* Field 2: Waktu Lahir (lg:col-span-3) */}
